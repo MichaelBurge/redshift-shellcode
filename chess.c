@@ -366,6 +366,8 @@ private uint64_t mkRay(int center, int direction)
 
 private int closest_blocker(uint64_t blockers_ray, int direction)
 {
+  if (blockers_ray == 0)
+    return POSITION_INVALID;
   switch (direction) {
   case DIRECTION_NORTHWEST:
   case DIRECTION_NORTH:
@@ -402,7 +404,6 @@ private uint64_t shoot_ray_until_blocker(gamestate state, int idx, int direction
 private uint64_t valid_bishop_moves(gamestate x, int idx)
 {
   return
-    
     shoot_ray_until_blocker(x, idx, DIRECTION_NORTHEAST) |
     shoot_ray_until_blocker(x, idx, DIRECTION_NORTHWEST) |
     shoot_ray_until_blocker(x, idx, DIRECTION_SOUTHEAST) |
