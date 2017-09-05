@@ -55,7 +55,8 @@ const int RANK = 8;
 
 const int POSITION_INVALID = 255;
 
-const uint64_t RAY_A1H1 = 0xFF;
+const uint64_t RAY_A1A8 = 0x0101010101010101;
+const uint64_t RAY_H1H8 = RAY_A1A8 << (RANK-1);
 
 // Public functions
 
@@ -73,6 +74,16 @@ private uint64_t set_bit(uint64_t x, uint64_t idx) { return x | bit(idx); }
 private uint64_t lsb_first_set(uint64_t x) { return __builtin_ctzll(x); }
 private uint64_t msb_first_set(uint64_t x) { return (127 - __builtin_clzll(x)); }
 
+private int rank(int x) { return x / 8; }
+private int file(int x) { return x % 8; }
+private uint64_t offset(uint64_t x, int os)
+{
+  if (os < 0) {
+    return (x >> -os);
+  } else {
+    return (x << os);
+  }
+}
 private uint64_t mkPosition(int file, int rank)
 {
   return rank * RANK + file;
@@ -89,9 +100,39 @@ const uint64_t RAY_A1H8 =
   bit(mkPosition(7,7))
   ;
 
+private void print_bitboard(uint64_t bb)
+{
+  for (int r = 8; r --> 0;) {
+    for (int f = 0; f < 8; f++) {
+      char c = is_bit_set(bb, mkPosition(f, r)) ? '1' : '0';
+      putchar(c);
+    }
+    putchar('\n');
+  }
+}
+
+// https://chessprogramming.wikispaces.com/On+an+empty+Board#RayAttacks
+uint64_t diagonal_mask(int center)
+{
+   const uint64_t maindia = 0x8040201008040201;
+   int diag =8*(center & 7) - (center & 56);
+   int nort = -diag & ( diag >> 31);
+   int sout =  diag & (-diag >> 31);
+   return (maindia >> sout) << nort;
+}
+
+uint64_t antidiagonal_mask(int center)
+{
+  const uint64_t maindia = 0x0102040810204080;
+  int diag =56- 8*(center&7) - (center&56);
+  int nort = -diag & ( diag >> 31);
+  int sout =  diag & (-diag >> 31);
+  return (maindia >> sout) << nort;
+}
+
 // https://chessprogramming.wikispaces.com/Flipping+Mirroring+and+Rotating
 // See 'flipDiagA1H8'
-private uint64_t rotate_bb(uint64_t x)
+private uint64_t flipDiagA1H8(uint64_t x)
 {
   uint64_t t;
   const uint64_t k1 = 0x5500550055005500;
@@ -104,6 +145,24 @@ private uint64_t rotate_bb(uint64_t x)
   t  = k1 & (x ^ (x <<  7));
   x ^=       t ^ (t >>  7) ;
   return x;
+}
+
+private uint64_t flip_vertical(uint64_t x)
+{
+  return
+    ( (x << 56)                        ) |
+    ( (x << 40) & (0x00ff000000000000) ) |
+    ( (x << 24) & (0x0000ff0000000000) ) |
+    ( (x <<  8) & (0x000000ff00000000) ) |
+    ( (x >>  8) & (0x00000000ff000000) ) |
+    ( (x >> 24) & (0x0000000000ff0000) ) |
+    ( (x >> 40) & (0x000000000000ff00) ) |
+    ( (x >> 56)                        );
+}
+
+private uint64_t rotate_bb(uint64_t x)
+{
+  return flip_vertical(flipDiagA1H8(x));
 }
 
 const uint64_t RAY_A8H1 = rotate_bb(RAY_A1H8);
@@ -276,35 +335,33 @@ private uint64_t bitrange(int start, int end)
 
 private uint64_t mkRay(int center, int direction)
 {
-  uint64_t ray_ne = RAY_A1H8 << center;
-  uint64_t ray_nw = RAY_A8H1 << center;
-  uint64_t ray_se = RAY_A8H1 >> (127 - center);
-  uint64_t ray_sw = RAY_A1H8 >> (127 - center);
-  int rank = direction / 8;
-  int rankstart = rank * 8;
-  //int file = direction % 8;
+  int rOs, fOs;
   switch (direction) {
-  case DIRECTION_NORTH:
-  case DIRECTION_SOUTH:
-    return rotate_bb(bitrange(rankstart, center));
-    break;
-  case DIRECTION_EAST:
-    return bitrange(rankstart, center);
-    break;
-  case DIRECTION_WEST:
-    return bitrange(center,rankstart+RANK-1);
-    break;
-  case DIRECTION_NORTHEAST:
-    return ray_ne;
-  case DIRECTION_NORTHWEST:
-    return ray_nw;
-  case DIRECTION_SOUTHEAST:
-    return ray_se;
-  case DIRECTION_SOUTHWEST:
-    return ray_sw;
-  default:
-    abort();
+  case DIRECTION_NORTHWEST: rOs =  1; fOs = -1; break;
+  case DIRECTION_NORTH:     rOs =  1; fOs =  0; break;
+  case DIRECTION_NORTHEAST: rOs =  1; fOs =  1; break;
+  case DIRECTION_EAST:      rOs =  0; fOs =  1; break;
+  case DIRECTION_SOUTHEAST: rOs = -1; fOs =  1; break;
+  case DIRECTION_SOUTH:     rOs = -1; fOs =  0; break;
+  case DIRECTION_SOUTHWEST: rOs = -1; fOs = -1; break;
+  case DIRECTION_WEST:      rOs =  0; fOs = -1; break;
+  default: abort();
   }
+  uint64_t ray;
+  uint64_t next = bit(center);
+  do {
+    ray = next;
+    next = offset(next, RANK * rOs);
+    next = offset(next, fOs);
+    switch (fOs) {
+    case 1:  next &= ~RAY_A1A8; break;
+    case -1: next &= ~RAY_H1H8; break;
+    default: break;
+    }
+    next |= ray;
+  } while (ray != next);
+  ray = clear_bit(ray, center);
+  return ray;
 }
 
 private int closest_blocker(uint64_t blockers_ray, int direction)
@@ -345,6 +402,7 @@ private uint64_t shoot_ray_until_blocker(gamestate state, int idx, int direction
 private uint64_t valid_bishop_moves(gamestate x, int idx)
 {
   return
+    
     shoot_ray_until_blocker(x, idx, DIRECTION_NORTHEAST) |
     shoot_ray_until_blocker(x, idx, DIRECTION_NORTHWEST) |
     shoot_ray_until_blocker(x, idx, DIRECTION_SOUTHEAST) |
@@ -435,7 +493,9 @@ private iterator advance_iterator(iterator x)
 {
   if (x.current_piece_bb) {
     x.current_piece_bb = advance_bb_iterator(x.current_piece_bb);
-  } else {
+  }
+
+  while (! is_iterator_finished(x) && ! x.current_piece_bb) {
     if (x.rooks_bb) {
       x.rooks_bb = advance_bb_iterator(x.rooks_bb);
     } else if (x.knights_bb) {
@@ -449,8 +509,9 @@ private iterator advance_iterator(iterator x)
     } else if (x.pawns_bb) {
       x.pawns_bb = advance_bb_iterator(x.pawns_bb);
     }
-    reset_iterator_moves(x);
+    x = reset_iterator_moves(x);
   }
+  
   return x;
 }
 
@@ -477,7 +538,7 @@ private iterator mkIterator(gamestate x)
   x.kings_bb   &= x.current_player_bb;
   x.pawns_bb   &= x.current_player_bb;
 
-  reset_iterator_moves(x);
+  x = advance_iterator(x);
   
   return x;
 }
@@ -521,7 +582,7 @@ private gamestate new_game()
     ;
   x.pawns_bb =
     ((uint64_t)0xFF << RANK) |
-    ((uint64_t)0xFF << (7*RANK));
+    ((uint64_t)0xFF << (6*RANK));
   x.current_player_bb = 0xFFFF;
   return x;
 }
@@ -538,5 +599,46 @@ private gamestate apply_move(gamestate x, move m)
   return x;
 }
 
-private int _rank(int x) { return x / 8; }
-private int _file(int x) { return x % 8; }
+private uint64_t mkRank(int idx) { return ((uint64_t)0xFF << (idx*RANK)); }
+private uint64_t mkFile(int idx) {
+  return
+    bit(mkPosition(idx,0)) |
+    bit(mkPosition(idx,1)) |
+    bit(mkPosition(idx,2)) |
+    bit(mkPosition(idx,3)) |
+    bit(mkPosition(idx,4)) |
+    bit(mkPosition(idx,5)) |
+    bit(mkPosition(idx,6)) |
+    bit(mkPosition(idx,7));
+}
+
+private bool iter_lt(iterator x, iterator y)
+{
+  return
+    x.current_piece_bb < y.current_piece_bb ||
+    (x.current_piece_bb == y.current_piece_bb &&
+     (x.rooks_bb < y.rooks_bb ||
+      (x.rooks_bb == y.rooks_bb &&
+       (x.knights_bb < y.knights_bb ||
+        (x.knights_bb == y.knights_bb &&
+         (x.bishops_bb < y.bishops_bb ||
+          (x.bishops_bb == y.bishops_bb &&
+           (x.queens_bb < y.queens_bb ||
+            (x.queens_bb == y.queens_bb &&
+             (x.kings_bb < y.kings_bb ||
+              (x.kings_bb == y.kings_bb &&
+               (x.pawns_bb < y.pawns_bb))))))))))));
+}
+
+private gamestate zerostate()
+{
+  gamestate x;
+  x.current_piece_bb = 0;
+  x.rooks_bb = 0;
+  x.knights_bb = 0;
+  x.bishops_bb = 0;
+  x.queens_bb = 0;
+  x.kings_bb = 0;
+  x.pawns_bb = 0;
+  return x;
+}
