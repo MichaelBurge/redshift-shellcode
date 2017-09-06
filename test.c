@@ -276,6 +276,53 @@ void test_pawn()
     uint64_t actual = valid_pawn_moves(g, center);
     assert_equal_bb("test_pawn_5", expected, actual);
   }
+  // Blocked by another piece when double-jumping
+  {
+    uint64_t center = mkPosition(0,1);
+    gamestate g = zerostate();
+    g.pawns_bb = bit(center);
+    g.current_piece_bb = g.pawns_bb;
+    g.pawns_bb |=  bit(mkPosition(0,3));
+    
+    uint64_t expected = bit(mkPosition(0,2));
+    uint64_t actual = valid_pawn_moves(g, center);
+    assert_equal_bb("test_pawn_6", expected, actual);
+  }
+  // En Passant
+  {
+    gamestate g = zerostate();
+    g.pawns_bb =
+      bit(mkPosition(0,1)) |
+      bit(mkPosition(1,3));
+    g.current_piece_bb = bit(mkPosition(0,1));
+
+    iterator i = mkIterator(g);
+    {
+      uint64_t expected =
+        bit(mkPosition(0,2)) |
+        bit(mkPosition(0,3));
+      assert_equal_bb("test_pawn_en_passant_1", expected, i.current_piece_bb);
+    }
+    // Double jump allows en passant
+    move m; m.from = mkPosition(0,1); m.to = mkPosition(0,3);
+    g = swap_board(apply_move(g, m));
+    i = mkIterator(g);
+    {
+      uint64_t expected =
+        bit(mkPosition(0,5)) |
+        bit(mkPosition(1,5));
+      assert_equal_int("test_pawn_en_passant_target", mkPosition(0,5), g.en_passant_sq);
+      assert_equal_bb("test_pawn_en_passant_2", expected, i.current_piece_bb);
+    }
+    // The actual capture
+    move m2; m2.from = mkPosition(1,4); m2.to = mkPosition(0,5);
+    print_gamestate(g);
+    g = swap_board(apply_move(g, m2));
+    {
+      assert_equal_int("test_pawn_en_passant_target_2", POSITION_INVALID, g.en_passant_sq);
+      assert_equal_bb("test_pawn_en_passant_3", bit(mkPosition(0,2)), g.pawns_bb);
+    }
+  }
 }
 
 void test_iterator()
@@ -446,7 +493,7 @@ void test_apply_move()
     gamestate g2 = apply_move(g, m);
 
     uint64_t expected = bit(m.to) | bit(mkPosition(1,0)) | bit(mkPosition(6,0));
-    assert_equal_bb("test_apply_move", expected, g2.knights_bb);
+    assert_equal_bb("test_apply_move_2", expected, g2.knights_bb);
   }
 }
 
@@ -464,6 +511,7 @@ int perft_divide_depth;
 void perft_divide_helper1(gamestate g, move m, int d)
 {
   n = 0;
+
   gamestate g2 = swap_board(apply_move(g, m));
   walk_game_tree(g2, perft_divide_depth, tick_counter);
   print_move(m);
@@ -501,7 +549,14 @@ void print_fen(gamestate g)
     if (r > 0)
       putchar('/');
   }
-  printf(" w - KQkq 0 1\n");
+  printf(" w ");
+  if (g.en_passant_sq == POSITION_INVALID) {
+    putchar('-');
+  } else {
+    //printf("%d---", g.en_passant_sq);
+    print_pos(g.en_passant_sq);
+  }
+  printf(" KQkq 0 1\n");
 }
 
 int main() {
@@ -518,17 +573,41 @@ int main() {
   /* print_bitboard(i.current_piece_bb); */
 
   gamestate g = new_game();
-  perft_divide(g,1);
+  // 1: G2G4
+  move m1; m1.from = mkPosition(6,1); m1.to = mkPosition(6,3);
+  g = swap_board(apply_move(g, m1));
+  // 2: H2H3
+  move m2; m2.from = mkPosition(7,1); m2.to = mkPosition(7,3);
+  g = swap_board(apply_move(g, m2));
+  // 3: G4H5
+  move m3; m3.from = mkPosition(6,3); m3.to = mkPosition(7,4);
+  g = swap_board(apply_move(g, m3));
+  // 4: G2G4
+  /* print_gamestate(g); */
+  move m4; m4.from = mkPosition(6,1); m4.to = mkPosition(6,3);
+  g = swap_board(apply_move(g, m4));
+  // 5: H5G6
+  move m5; m5.from = mkPosition(7,4); m5.to = mkPosition(6,5);
+  g = swap_board(apply_move(g, m5));
+  /* move m2; m2.from = mkPosition(1,1); m2.to = mkPosition(1,3); */
+
+  /* g = swap_board(apply_move(g, m2)); */
+  /* move m3; m3.from = mkPosition(0,3); m3.to = mkPosition(0,4); */
+  /* g = swap_board(apply_move(g, m3)); */
+  /* g = apply_move(g, m3); */
+  /* perft_divide(g,0); */
   /* print_fen(g); */
   /* // 1: B1A3 */
-  move m1; m1.from = mkPosition(1,0); m1.to = mkPosition(0,2);
-  g = swap_board(apply_move(g, m1));
-  /* // 2: B1A3 */
-  g = swap_board(apply_move(g, m1));
+
+  /* g = swap_board(apply_move(g, m1)); */
+  /* /\* // 2: B1A3 *\/ */
+  /* g = swap_board(apply_move(g, m1)); */
   print_fen(g);
   print_gamestate(g);
-  perft_divide(g, 1);
-  
+  perft_divide(g, 0);
+  /* print_gamestate(g); */
+  /* printf("== rooks\n"); print_bitboard(g.rooks_bb); */
+  /* printf("== pawns\n"); print_bitboard(g.pawns_bb); */
   
   printf("Perft(0): %d\n", perft(0));
   printf("Perft(1): %d\n", perft(1));

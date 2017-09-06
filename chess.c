@@ -10,7 +10,6 @@
 #endif
 
 // bb is 'bitboard'
-// TODO: Add en passant to the gamestate
 typedef struct gamestate {
   uint64_t rooks_bb;
   uint64_t knights_bb;
@@ -22,6 +21,7 @@ typedef struct gamestate {
     uint64_t current_player_bb;
     uint64_t current_piece_bb; // For iterators
   };
+  int en_passant_sq;
 } gamestate;
 
 struct move {
@@ -109,6 +109,7 @@ private gamestate zerostate()
   x.queens_bb = 0;
   x.kings_bb = 0;
   x.pawns_bb = 0;
+  x.en_passant_sq = POSITION_INVALID;
   return x;
 }
 
@@ -374,7 +375,8 @@ private uint64_t valid_pawn_moves(gamestate x, int center)
   // Non-captures
   if (! is_bit_set(all_pieces(x), center + RANK)) {
     uint64_t noncaptures_bb = bit(center + RANK);
-    if (rank(center) == 1 && ! is_bit_set(all_pieces(x), center + RANK)) {
+    uint64_t pcs = all_pieces(x);
+    if (rank(center) == 1 && ! is_bit_set(pcs, center + RANK) && ! is_bit_set(pcs, center + RANK*2)) {
       noncaptures_bb |= bit(center + RANK + RANK);
     }
     moves_bb |= noncaptures_bb;
@@ -389,6 +391,10 @@ private uint64_t valid_pawn_moves(gamestate x, int center)
       captures_bb |= bit(move_direction(center + RANK, DIRECTION_EAST));
     }
     captures_bb &= all_pieces(x) ^ x.current_player_bb;
+    if ((file(center) < 7 && x.en_passant_sq == center + RANK + 1) ||
+        (file(center) > 0 && x.en_passant_sq == center + RANK - 1)) {
+      captures_bb |= bit(x.en_passant_sq);
+    }
     moves_bb |= captures_bb;
   }
   return moves_bb;
@@ -661,32 +667,28 @@ private gamestate new_game()
     bit(mkPosition(0,0)) |
     bit(mkPosition(7,0)) |
     bit(mkPosition(0,7)) |
-    bit(mkPosition(7,7))
-    ;
+    bit(mkPosition(7,7));
   x.knights_bb =
     bit(mkPosition(1,0)) |
     bit(mkPosition(6,0)) |
     bit(mkPosition(1,7)) |
-    bit(mkPosition(6,7))
-    ;
+    bit(mkPosition(6,7));
   x.bishops_bb =
     bit(mkPosition(2,0)) |
     bit(mkPosition(5,0)) |
     bit(mkPosition(2,7)) |
-    bit(mkPosition(5,7))
-    ;
+    bit(mkPosition(5,7));
   x.queens_bb =
     bit(mkPosition(3,0)) |
-    bit(mkPosition(4,7))
-    ;
+    bit(mkPosition(4,7));
   x.kings_bb =
     bit(mkPosition(4,0)) |
-    bit(mkPosition(3,7))
-    ;
+    bit(mkPosition(3,7));
   x.pawns_bb =
     ((uint64_t)0xFF << RANK) |
     ((uint64_t)0xFF << (6*RANK));
   x.current_player_bb = 0xFFFF;
+  x.en_passant_sq = POSITION_INVALID;
   return x;
 }
 
@@ -702,6 +704,9 @@ private gamestate swap_board(gamestate g)
   g.kings_bb = __builtin_bswap64(g.kings_bb);
   g.pawns_bb = __builtin_bswap64(g.pawns_bb);
   g.current_player_bb = __builtin_bswap64(g.current_player_bb);
+  if (g.en_passant_sq != POSITION_INVALID) {
+    g.en_passant_sq = mkPosition(file(g.en_passant_sq), 7 - rank(g.en_passant_sq));
+  }
   return g;
 }
 
@@ -712,6 +717,16 @@ private gamestate apply_move(gamestate x, move m)
   if (to_piece != PIECE_EMPTY) {
     uint64_t to_bb = get_piece_bb(x, to_piece);
     x = set_piece_bb(x, to_piece, clear_bit(to_bb, m.to));
+  }
+  // Capture the pawn properly during En Passant capture
+  if (from_piece == PIECE_PAWN && m.to == x.en_passant_sq) {
+    x.pawns_bb = clear_bit(x.pawns_bb, x.en_passant_sq - RANK);
+  }
+  // Set En Passant target square on double-jump
+  if (from_piece == PIECE_PAWN && rank(m.to) - rank(m.from) == 2) {
+    x.en_passant_sq = m.from + RANK;
+  } else {
+    x.en_passant_sq = POSITION_INVALID;
   }
   uint64_t from_bb = get_piece_bb(x, from_piece);
   x = set_piece_bb(x, from_piece, clear_bit(from_bb, m.from) | bit(m.to));
