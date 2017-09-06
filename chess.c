@@ -767,3 +767,80 @@ private bool iter_lt(iterator x, iterator y)
                (x.pawns_bb == y.pawns_bb &&
                 (x.current_piece_bb < y.current_piece_bb)))))))))))));
 }
+
+uint64_t movepoints(gamestate g)
+{
+  uint64_t movepoints = 0;
+  iterator i = mkIterator(g);
+  while (! is_iterator_finished(i)) {
+    movepoints |= i.current_piece_bb;
+    i.current_piece_bb = 0;
+    i = advance_iterator(g, i);
+  }
+  return movepoints;
+}
+
+uint64_t vulnerables(gamestate g)
+{
+  g = swap_board(g);
+  uint64_t ret = movepoints(g) & enemy_pieces(g);
+  ret = __builtin_bswap64(ret);
+  return ret;
+}
+
+bool is_in_check(gamestate g)
+{
+  uint64_t white_kings = g.kings_bb & g.current_player_bb;
+  return ((white_kings & vulnerables(g)) != 0);
+}
+
+// Like advance_iterator, but skip moves that leave the king in check
+private iterator advance_iterator_legal(gamestate g, iterator i)
+{
+  while (1) {
+    i = advance_iterator(g, i);
+    if (is_iterator_finished(i)) {
+      break;
+    }
+    move m = dereference_iterator(i);
+    gamestate g2 = apply_move(g, m);
+    if (! is_in_check(g2)) {
+      break;
+    }
+  }
+  return i;
+}
+
+private iterator mkLegalIterator(gamestate g)
+{
+  iterator i = mkIterator(g);
+  move m = dereference_iterator(i);
+  gamestate g2 = apply_move(g, m);
+  if (is_in_check(g2)) {
+    i = advance_iterator_legal(g, i);
+  }
+  return i;
+}
+
+private uint64_t legal_movepoints(gamestate g)
+{
+  uint64_t movepoints = 0;
+  iterator i = mkLegalIterator(g);
+  while (! is_iterator_finished(i)) {
+    move m = dereference_iterator(i);
+    movepoints |= bit(m.to);
+    i = advance_iterator_legal(g, i);
+  }
+  return movepoints;
+}
+
+private int num_legal_moves(gamestate g)
+{
+  iterator i = mkLegalIterator(g);
+  int count = 0;
+  while (! is_iterator_finished(i)) {
+    i = advance_iterator_legal(g, i);
+    count++;
+  }
+  return count;
+}

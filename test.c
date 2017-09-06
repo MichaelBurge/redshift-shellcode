@@ -50,7 +50,7 @@ void print_gamestate(gamestate g)
 }
 
 void print_pos(int pos) {
-  printf("%c%d", file(pos) + 'A', rank(pos)+1);
+  printf("%c%d", file(pos) + 'a', rank(pos)+1);
 }
 
 void print_move(move m) {
@@ -70,14 +70,14 @@ void walk_game_tree(gamestate init, int depth, ft_action f)
   if (depth <= 0) {
     return;
   } else {
-    iterator i = mkIterator(init);
+    iterator i = mkLegalIterator(init);
     while (! is_iterator_finished(i)) {
       move m = dereference_iterator(i);
       gamestate g = swap_board(apply_move(init, m));
 
       f(init, m, depth);
       walk_game_tree(g, depth-1, f);
-      iterator i2 = advance_iterator(init, i);
+      iterator i2 = advance_iterator_legal(init, i);
       if (! iter_lt(i2, i)) {
         printf("%lu\n", n);
         print_iterator(i);
@@ -316,7 +316,6 @@ void test_pawn()
     }
     // The actual capture
     move m2; m2.from = mkPosition(1,4); m2.to = mkPosition(0,5);
-    print_gamestate(g);
     g = swap_board(apply_move(g, m2));
     {
       assert_equal_int("test_pawn_en_passant_target_2", POSITION_INVALID, g.en_passant_sq);
@@ -497,6 +496,45 @@ void test_apply_move()
   }
 }
 
+void test_check()
+{
+  // King in check 1
+  {
+    uint64_t center = mkPosition(3,3);
+    gamestate g = zerostate();
+    g.kings_bb = bit(center);
+    g.rooks_bb = bit(center+2);
+    g.current_player_bb = g.kings_bb;
+
+    assert("test_check_1", is_in_check(g));
+  }
+  // King in check 2
+  {
+    uint64_t center = mkPosition(3,3);
+    gamestate g = zerostate();
+    g.kings_bb = bit(center);
+    g.rooks_bb = bit(center-2*RANK);
+    g.current_player_bb = g.kings_bb;
+
+    assert("test_check_2", is_in_check(g));
+  }
+  // King blocked by rooks
+  {
+    uint64_t center = mkPosition(3,3);
+    gamestate g = zerostate();
+    g.kings_bb = bit(center);
+    g.rooks_bb =
+      bit(mkPosition(0,4)) |
+      bit(mkPosition(0,2)) |
+      bit(mkPosition(2,0));
+    //bit(mkPosition(0,2));
+    g.current_player_bb = g.kings_bb;
+    printf("== rooks\n"); print_bitboard(g.rooks_bb);
+    printf("== legal_movepoints\n"); print_bitboard(legal_movepoints(g));
+    assert_equal_int("test_check_2", 1, num_legal_moves(g));
+  }
+}
+
 int perft(int depth)
 {
   n = 0;
@@ -567,27 +605,27 @@ int main() {
   test_king();
   test_iterator();
   test_apply_move();
+  test_check();
   /* gamestate g = new_game(); */
   /* iterator i = mkIterator(g); */
   
   /* print_bitboard(i.current_piece_bb); */
 
   gamestate g = new_game();
-  // 1: G2G4
+  /* // 1: G2G4 */
   move m1; m1.from = mkPosition(6,1); m1.to = mkPosition(6,3);
   g = swap_board(apply_move(g, m1));
-  // 2: H2H3
+  /* // 2: H2H3 */
   move m2; m2.from = mkPosition(7,1); m2.to = mkPosition(7,3);
   g = swap_board(apply_move(g, m2));
-  // 3: G4H5
+  /* // 3: G4H5 */
   move m3; m3.from = mkPosition(6,3); m3.to = mkPosition(7,4);
   g = swap_board(apply_move(g, m3));
-  // 4: G2G4
-  /* print_gamestate(g); */
-  move m4; m4.from = mkPosition(6,1); m4.to = mkPosition(6,3);
+  /* // 4: D2D3 */
+  move m4; m4.from = mkPosition(3,1); m4.to = mkPosition(3,2);
   g = swap_board(apply_move(g, m4));
-  // 5: H5G6
-  move m5; m5.from = mkPosition(7,4); m5.to = mkPosition(6,5);
+  /* // 5: F1H3 */
+  move m5; m5.from = mkPosition(5,0); m5.to = mkPosition(7,2);
   g = swap_board(apply_move(g, m5));
   /* move m2; m2.from = mkPosition(1,1); m2.to = mkPosition(1,3); */
 
@@ -595,16 +633,16 @@ int main() {
   /* move m3; m3.from = mkPosition(0,3); m3.to = mkPosition(0,4); */
   /* g = swap_board(apply_move(g, m3)); */
   /* g = apply_move(g, m3); */
-  /* perft_divide(g,0); */
-  /* print_fen(g); */
+  perft_divide(g,0);
+  print_fen(g);
   /* // 1: B1A3 */
 
   /* g = swap_board(apply_move(g, m1)); */
   /* /\* // 2: B1A3 *\/ */
   /* g = swap_board(apply_move(g, m1)); */
-  print_fen(g);
-  print_gamestate(g);
-  perft_divide(g, 0);
+  /* print_fen(g); */
+  /* /\* print_gamestate(g); *\/ */
+  /* perft_divide(g, 5); */
   /* print_gamestate(g); */
   /* printf("== rooks\n"); print_bitboard(g.rooks_bb); */
   /* printf("== pawns\n"); print_bitboard(g.pawns_bb); */
