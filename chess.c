@@ -2,7 +2,9 @@
 
 #ifdef DEBUG
 #define abort() __builtin_trap();
+#define private static
 #else
+#define private static __attribute__((always_inline)) inline
 #define abort() __builtin_unreachable();
 #endif
 
@@ -28,8 +30,6 @@ struct move {
 
 // TODO: Add promotions to the iterator
 typedef gamestate iterator;
-
-#define private static __attribute__((always_inline)) inline
 
 const int PIECE_EMPTY  = 0;
 const int PIECE_ROOK   = 1;
@@ -68,11 +68,9 @@ uint64_t best_move(uint64_t rooks_bb, uint64_t knights_bb, uint64_t bishops_bb, 
 // Private functions
 
 private uint64_t bit(uint64_t idx) {
-#ifdef DEBUG
-  if (idx > 64) {
-    throw "???";
+  if (idx >= 64 || idx < 0) {
+    return 0;
   }
-#endif
   return ((uint64_t)(1) << idx);
 }
 private uint64_t clear_bit(uint64_t x, uint64_t idx) { return x & ~bit(idx); }
@@ -82,7 +80,7 @@ private bool is_bit_set(uint64_t x, uint64_t idx) {
 }
 private uint64_t set_bit(uint64_t x, uint64_t idx) { return x | bit(idx); }
 private uint64_t lsb_first_set(uint64_t x) { return __builtin_ctzll(x); }
-private uint64_t msb_first_set(uint64_t x) { return (127 - __builtin_clzll(x)); }
+private uint64_t msb_first_set(uint64_t x) { return (63 - __builtin_clzll(x)); }
 
 private int rank(int x) { return x / 8; }
 private int file(int x) { return x % 8; }
@@ -250,6 +248,9 @@ private int next_iterator_piece(iterator x)
 private int iterator_position(iterator x)
 {
   int piece = next_iterator_piece(x);
+  if (piece == PIECE_EMPTY) {
+    return POSITION_INVALID;
+  } 
   int piece_bb = get_piece_bb(x, piece);
   int idx = lsb_first_set(piece_bb);
   return idx;
@@ -283,6 +284,9 @@ private bool is_iterator_finished(iterator x)
 
 private int move_direction(int idx, int direction)
 {
+  if (idx < 0 || idx >= 64) {
+    return POSITION_INVALID;
+  }
   switch (direction) {
   case DIRECTION_EAST:
     if (idx % 8 == 7)
@@ -369,10 +373,16 @@ private uint64_t valid_knight_moves(gamestate x, int idx)
   uint64_t moves_bb = 0;
   moves_bb |= bit(move_direction(idx + 2 * RANK, DIRECTION_WEST));
   moves_bb |= bit(move_direction(idx + 2 * RANK, DIRECTION_EAST));
-  moves_bb |= rotate_bb(moves_bb);
-  moves_bb |= rotate_bb(moves_bb);
-  moves_bb |= rotate_bb(moves_bb);
-  moves_bb ^= x.current_player_bb;
+  
+  moves_bb |= bit(move_direction(idx - 2 * RANK, DIRECTION_WEST));
+  moves_bb |= bit(move_direction(idx - 2 * RANK, DIRECTION_EAST));
+  
+  moves_bb |= bit(move_direction(idx + 2, DIRECTION_NORTH));
+  moves_bb |= bit(move_direction(idx + 2, DIRECTION_SOUTH));
+  
+  moves_bb |= bit(move_direction(idx - 2, DIRECTION_NORTH));
+  moves_bb |= bit(move_direction(idx - 2, DIRECTION_SOUTH));
+  moves_bb &= ~x.current_player_bb;
   return moves_bb;
 }
 
@@ -444,7 +454,7 @@ private uint64_t shoot_ray_until_blocker(gamestate state, int idx, int direction
     return base_ray;
   } else {
     uint64_t blocker_ray = mkRay(blocker, direction);
-    uint64_t movable_squares_without_capture = base_ray ^ blocker_ray;
+    uint64_t movable_squares_without_capture = base_ray ^ blocker_ray ^ bit(blocker);
     bool allow_capture = ! is_bit_set(state.current_player_bb, blocker);
     if (allow_capture)
       return movable_squares_without_capture | bit(blocker);
@@ -517,7 +527,7 @@ private uint64_t valid_piece_moves(gamestate x, int idx)
   int piece = get_piece(x, idx);
   switch (piece) {
   case PIECE_ROOK:
-    return valid_pawn_moves(x, idx);
+    return valid_rook_moves(x, idx);
   case PIECE_KNIGHT:
     return valid_knight_moves(x, idx);
   case PIECE_BISHOP:
@@ -533,16 +543,20 @@ private uint64_t valid_piece_moves(gamestate x, int idx)
   }
 }
 
-private iterator reset_iterator_moves(iterator x)
+private iterator reset_iterator_moves(gamestate g, iterator x)
 {
-  int idx = iterator_position(x);
-  uint64_t moves = valid_piece_moves(x, idx);
-  x.current_piece_bb = moves;
-  return x;
+  if (is_iterator_finished(x)) {
+    return x;
+  } else {
+    int idx = iterator_position(x);
+    uint64_t moves = valid_piece_moves(g, idx);
+    x.current_piece_bb = moves;
+    return x;
+  }
 }
 
 
-private iterator advance_iterator(iterator x)
+private iterator advance_iterator(gamestate g, iterator x)
 {
   if (x.current_piece_bb) {
     x.current_piece_bb = advance_bb_iterator(x.current_piece_bb);
@@ -562,7 +576,7 @@ private iterator advance_iterator(iterator x)
     } else if (x.pawns_bb) {
       x.pawns_bb = advance_bb_iterator(x.pawns_bb);
     }
-    x = reset_iterator_moves(x);
+    x = reset_iterator_moves(g, x);
   }
   
   return x;
@@ -582,8 +596,9 @@ private gamestate switch_sides(gamestate x)
   return x;
 }
                  
-private iterator mkIterator(gamestate x)
+private iterator mkIterator(gamestate g)
 {
+  iterator x = g;
   x.rooks_bb   &= x.current_player_bb;
   x.knights_bb &= x.current_player_bb;
   x.bishops_bb &= x.current_player_bb;
@@ -591,7 +606,10 @@ private iterator mkIterator(gamestate x)
   x.kings_bb   &= x.current_player_bb;
   x.pawns_bb   &= x.current_player_bb;
 
-  x = advance_iterator(x);
+  x = reset_iterator_moves(g, x);
+  if (! x.current_piece_bb) {
+    x = advance_iterator(g, x);
+  }
   
   return x;
 }

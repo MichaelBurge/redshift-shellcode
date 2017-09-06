@@ -39,7 +39,7 @@ void walk_game_tree(gamestate init, int depth, ft_action f)
       move m = dereference_iterator(i);
       gamestate g = apply_move(init, m);
       walk_game_tree(g, depth-1, f);
-      iterator i2 = advance_iterator(i);
+      iterator i2 = advance_iterator(g, i);
       if (! iter_lt(i2, i)) {
         printf("%lu\n", n);
         print_iterator(i);
@@ -59,6 +59,22 @@ void assert_equal_bb(const char* message, uint64_t x, uint64_t y)
     print_bitboard(x);
     printf("== actual\n");
     print_bitboard(y);
+    throw "derp";
+  }
+}
+void assert_equal_int(const char* message, int x, int y)
+{
+  if (x != y) {
+    printf("ASSERTION_FAILURE: %s\n", message);
+    printf("%d != %d", x,y);
+    throw "derp";
+  }
+}
+
+void assert(const char* message, bool x)
+{
+  if (! x) {
+    printf("ASSERTION_FAILURE: %s\n", message);
     throw "derp";
   }
 }
@@ -126,14 +142,46 @@ void test_ray()
 
 void test_rook()
 {
-  uint64_t center = mkPosition(3,3);
-  gamestate g = zerostate();
-  g.rooks_bb = bit(center);
-  g.current_piece_bb = g.rooks_bb;
+  // Rook in middle
+  {
+    uint64_t center = mkPosition(3,3);
+    gamestate g = zerostate();
+    g.rooks_bb = bit(center);
+    g.current_piece_bb = g.rooks_bb;
+    
+    uint64_t expected = clear_bit(mkRank(3) | mkFile(3), center);
+    uint64_t actual = valid_rook_moves(g, center);
+    assert_equal_bb("test_rook_middle", expected, actual);
+  }
+  // Rook in corner
+  {
+    uint64_t center = mkPosition(0,0);
+    gamestate g = zerostate();
+    g.rooks_bb = bit(center);
+    g.current_piece_bb = g.rooks_bb;
+    
+    uint64_t expected = clear_bit(mkRank(0) | mkFile(0), center);
+    uint64_t actual = valid_rook_moves(g, center);
+    assert_equal_bb("test_rook_corner", expected, actual);
+  }
+  // Rook blocked in left corner
+  {
+    uint64_t center = mkPosition(0,0);
+    gamestate g = zerostate();
+    g.rooks_bb = bit(center) | bit(mkPosition(0,1)) | bit(mkPosition(1,0));
+    g.current_piece_bb = g.rooks_bb;
 
-  uint64_t expected = clear_bit(mkRank(3) | mkFile(3), center);
-  uint64_t actual = valid_rook_moves(g, center);
-  assert_equal_bb("test_rook", expected, actual);
+    assert_equal_bb("test_rook_blocked_1", 0, valid_rook_moves(g, center));
+  }
+  // Rook blocked in right corner
+  {
+    uint64_t center = mkPosition(7,0);
+    gamestate g = zerostate();
+    g.rooks_bb = bit(center) | bit(mkPosition(7,1)) | bit(mkPosition(6,0));
+    g.current_piece_bb = g.rooks_bb;
+
+    assert_equal_bb("test_rook_blocked_2", 0, valid_rook_moves(g, center));
+  }
 }
 
 void test_pawn()
@@ -186,10 +234,87 @@ void test_pawn()
   }
 }
 
-/* void test_knight() */
-/* { */
-/*   uint6 */
-/* } */
+void test_iterator()
+{
+  // Piece has valid moves
+  {
+    uint64_t center = mkPosition(0,0);
+    gamestate g = zerostate();
+    g.rooks_bb = bit(center);
+    g.current_piece_bb = g.rooks_bb;
+
+    uint64_t expected =
+      mkRay(center, DIRECTION_NORTH) |
+      mkRay(center, DIRECTION_EAST);
+    iterator i = mkIterator(g);
+    uint64_t actual = i.current_piece_bb;
+    assert_equal_bb("test_iterator_1", expected, actual);
+  }
+  // Piece has no valid moves; skip to next
+  {
+    uint64_t center = mkPosition(0,0);
+    gamestate g = zerostate();
+    g.pawns_bb = bit(mkPosition(0,1));
+    g.rooks_bb = bit(center);
+    g.knights_bb = bit(mkPosition(1,0));
+    g.current_piece_bb = all_pieces(g);
+
+    iterator i = mkIterator(g);    
+    assert_equal_bb("test_iterator_2_rooks", 0, i.rooks_bb);
+    assert_equal_bb("test_iterator_2_knights", bit(mkPosition(1,0)), i.knights_bb);
+    uint64_t expected =
+      bit(mkPosition(0,2)) |
+      bit(mkPosition(2,2)) |
+      bit(mkPosition(3,1));
+    assert_equal_bb("test_iterator_2_knight_moves", expected, i.current_piece_bb);
+  }
+  // Two pieces have no valid moves; skip to next
+  {
+    gamestate g = zerostate();
+    g.pawns_bb =
+      bit(mkPosition(0,1)) |
+      bit(mkPosition(7,1));
+    g.rooks_bb =
+      bit(mkPosition(0,0)) |
+      bit(mkPosition(7,0));
+    g.knights_bb =
+      bit(mkPosition(1,0)) |
+      bit(mkPosition(6,0));
+    g.current_piece_bb = all_pieces(g);
+    iterator i = mkIterator(g);
+    assert_equal_bb("test_iterator_3_rooks", 0, i.rooks_bb);
+    assert_equal_bb("test_iterator_3_knights", bit(mkPosition(1,0)) | bit(mkPosition(6,0)), i.knights_bb);
+    uint64_t expected = valid_knight_moves(g, mkPosition(1,0));
+    assert_equal_bb("test_iterator_3_knight_moves", expected, i.current_piece_bb);
+      
+  }
+  // Empty iterator is finished
+  {
+    gamestate g = zerostate();
+    iterator i = zerostate();
+    assert("test_iterator_empty_1", is_iterator_finished(i));
+    iterator j = advance_iterator(g, i);
+    assert("test_iterator_empty_2", is_iterator_finished(j));
+  }
+}
+    
+void test_knight()
+{
+  // Knight in middle
+  {
+    uint64_t center = mkPosition(1,0);
+    gamestate g = zerostate();
+    g.knights_bb = bit(center);
+    g.current_piece_bb = g.knights_bb;
+
+    uint64_t expected =
+      bit(mkPosition(0,2)) |
+      bit(mkPosition(2,2)) |
+      bit(mkPosition(3,1));
+    uint64_t actual = valid_knight_moves(g, center);
+    assert_equal_bb("test_knight_1", expected, actual);
+  }
+}
 
 int perft(int depth)
 {
@@ -204,14 +329,15 @@ int main() {
   test_ray();
   test_rook();
   test_pawn();
-  
+  test_knight();
+  test_iterator();
   /* gamestate g = new_game(); */
   /* iterator i = mkIterator(g); */
   
   /* print_bitboard(i.current_piece_bb); */
   
-  /* printf("Perft(0): %d\n", perft(0)); */
-  /* printf("Perft(1): %d\n", perft(1)); */
+  printf("Perft(0): %d\n", perft(0));
+  printf("Perft(1): %d\n", perft(1));
   /* printf("Perft(2): %d\n", perft(2)); */
   /* printf("Perft(3): %d\n", perft(3)); */
 }
