@@ -2,6 +2,7 @@
 
 #ifdef DEBUG
 #define abort() __builtin_trap();
+//#define abort() throw "derp";
 #define private static
 #else
 #define private static __attribute__((always_inline)) inline
@@ -97,6 +98,21 @@ private uint64_t offset(uint64_t x, int os)
     return (x << os);
   }
 }
+
+private gamestate zerostate()
+{
+  gamestate x;
+  x.current_piece_bb = 0;
+  x.rooks_bb = 0;
+  x.knights_bb = 0;
+  x.bishops_bb = 0;
+  x.queens_bb = 0;
+  x.kings_bb = 0;
+  x.pawns_bb = 0;
+  return x;
+}
+
+
 private uint64_t mkPosition(int file, int rank)
 {
   return rank * RANK + file;
@@ -128,7 +144,7 @@ private void print_bitboard(uint64_t bb)
 #endif
 
 // https://chessprogramming.wikispaces.com/On+an+empty+Board#RayAttacks
-uint64_t diagonal_mask(int center)
+private uint64_t diagonal_mask(int center)
 {
    const uint64_t maindia = 0x8040201008040201;
    int diag =8*(center & 7) - (center & 56);
@@ -137,7 +153,7 @@ uint64_t diagonal_mask(int center)
    return (maindia >> sout) << nort;
 }
 
-uint64_t antidiagonal_mask(int center)
+private uint64_t antidiagonal_mask(int center)
 {
   const uint64_t maindia = 0x0102040810204080;
   int diag =56- 8*(center&7) - (center&56);
@@ -282,6 +298,16 @@ private bool is_iterator_finished(iterator x)
     ;
 }
 
+// When a piece is moving west, it may wrap around to be east.
+// So we mask out the eastmost column, since it's impossible anyways.
+private uint64_t guard_west(uint64_t x) {
+  return x & ~RAY_H1H8;
+}
+
+private uint64_t guard_east(uint64_t x) {
+  return x & ~RAY_A1A8;
+}
+
 private int move_direction(int idx, int direction)
 {
   if (idx < 0 || idx >= 64) {
@@ -371,17 +397,18 @@ private uint64_t valid_pawn_moves(gamestate x, int center)
 private uint64_t valid_knight_moves(gamestate x, int idx)
 {
   uint64_t moves_bb = 0;
-  moves_bb |= bit(move_direction(idx + 2 * RANK, DIRECTION_WEST));
-  moves_bb |= bit(move_direction(idx + 2 * RANK, DIRECTION_EAST));
+  moves_bb |= guard_west(bit(move_direction(idx + 2 * RANK, DIRECTION_WEST)));
+  moves_bb |= guard_east(bit(move_direction(idx + 2 * RANK, DIRECTION_EAST)));
   
-  moves_bb |= bit(move_direction(idx - 2 * RANK, DIRECTION_WEST));
-  moves_bb |= bit(move_direction(idx - 2 * RANK, DIRECTION_EAST));
+  moves_bb |= guard_west(bit(move_direction(idx - 2 * RANK, DIRECTION_WEST)));
+  moves_bb |= guard_east(bit(move_direction(idx - 2 * RANK, DIRECTION_EAST)));
   
-  moves_bb |= bit(move_direction(idx + 2, DIRECTION_NORTH));
-  moves_bb |= bit(move_direction(idx + 2, DIRECTION_SOUTH));
-  
-  moves_bb |= bit(move_direction(idx - 2, DIRECTION_NORTH));
-  moves_bb |= bit(move_direction(idx - 2, DIRECTION_SOUTH));
+  moves_bb |= bit(move_direction(move_direction(move_direction(idx, DIRECTION_EAST), DIRECTION_EAST), DIRECTION_NORTH));
+  moves_bb |= bit(move_direction(move_direction(move_direction(idx, DIRECTION_EAST), DIRECTION_EAST), DIRECTION_SOUTH));
+
+  moves_bb |= bit(move_direction(move_direction(move_direction(idx, DIRECTION_WEST), DIRECTION_WEST), DIRECTION_NORTH));
+  moves_bb |= bit(move_direction(move_direction(move_direction(idx, DIRECTION_WEST), DIRECTION_WEST), DIRECTION_SOUTH));
+
   moves_bb &= ~x.current_player_bb;
   return moves_bb;
 }
@@ -485,7 +512,7 @@ private uint64_t valid_rook_moves(gamestate x, int idx)
 
 private uint64_t valid_king_moves(gamestate x, int idx)
 {
-  return
+  uint64_t ret =
     bit(move_direction(idx, DIRECTION_EAST)) |
     bit(move_direction(idx, DIRECTION_WEST)) |
     bit(move_direction(idx, DIRECTION_NORTH)) |
@@ -495,6 +522,8 @@ private uint64_t valid_king_moves(gamestate x, int idx)
     bit(move_direction(idx, DIRECTION_NORTHWEST)) |
     bit(move_direction(idx, DIRECTION_SOUTHWEST))
     ;
+  ret &= ~ x.current_piece_bb;
+  return ret;
 }
 
 private uint64_t valid_queen_moves(gamestate x, int idx)
@@ -546,7 +575,7 @@ private uint64_t valid_piece_moves(gamestate x, int idx)
 private iterator reset_iterator_moves(gamestate g, iterator x)
 {
   if (is_iterator_finished(x)) {
-    return x;
+    return zerostate();
   } else {
     int idx = iterator_position(x);
     uint64_t moves = valid_piece_moves(g, idx);
@@ -577,6 +606,9 @@ private iterator advance_iterator(gamestate g, iterator x)
       x.pawns_bb = advance_bb_iterator(x.pawns_bb);
     }
     x = reset_iterator_moves(g, x);
+  }
+  if (is_iterator_finished(x) && x.current_piece_bb != 0) {
+    abort();
   }
   
   return x;
@@ -658,15 +690,16 @@ private gamestate new_game()
   return x;
 }
 
-
 private gamestate apply_move(gamestate x, move m)
 {
   int from_piece = get_piece(x, m.from);
   int to_piece = get_piece(x, m.to);
+  if (to_piece != PIECE_EMPTY) {
+    uint64_t to_bb = get_piece_bb(x, to_piece);
+    x = set_piece_bb(x, to_piece, clear_bit(to_bb, m.to));
+  }
   uint64_t from_bb = get_piece_bb(x, from_piece);
-  uint64_t to_bb = get_piece_bb(x, to_piece);
-  x = set_piece_bb(x, from_piece, clear_bit(from_bb, m.from));
-  x = set_piece_bb(x, to_piece, set_bit(to_bb, m.to));
+  x = set_piece_bb(x, from_piece, clear_bit(from_bb, m.from) | bit(m.to));
   return x;
 }
 
@@ -686,30 +719,17 @@ private uint64_t mkFile(int idx) {
 private bool iter_lt(iterator x, iterator y)
 {
   return
-    x.current_piece_bb < y.current_piece_bb ||
-    (x.current_piece_bb == y.current_piece_bb &&
-     (x.rooks_bb < y.rooks_bb ||
-      (x.rooks_bb == y.rooks_bb &&
-       (x.knights_bb < y.knights_bb ||
-        (x.knights_bb == y.knights_bb &&
-         (x.bishops_bb < y.bishops_bb ||
-          (x.bishops_bb == y.bishops_bb &&
-           (x.queens_bb < y.queens_bb ||
-            (x.queens_bb == y.queens_bb &&
-             (x.kings_bb < y.kings_bb ||
-              (x.kings_bb == y.kings_bb &&
-               (x.pawns_bb < y.pawns_bb))))))))))));
-}
-
-private gamestate zerostate()
-{
-  gamestate x;
-  x.current_piece_bb = 0;
-  x.rooks_bb = 0;
-  x.knights_bb = 0;
-  x.bishops_bb = 0;
-  x.queens_bb = 0;
-  x.kings_bb = 0;
-  x.pawns_bb = 0;
-  return x;
+    (x.rooks_bb < y.rooks_bb ||
+     (x.rooks_bb == y.rooks_bb &&
+      (x.knights_bb < y.knights_bb ||
+       (x.knights_bb == y.knights_bb &&
+        (x.bishops_bb < y.bishops_bb ||
+         (x.bishops_bb == y.bishops_bb &&
+          (x.queens_bb < y.queens_bb ||
+           (x.queens_bb == y.queens_bb &&
+            (x.kings_bb < y.kings_bb ||
+             (x.kings_bb == y.kings_bb &&
+              (x.pawns_bb < y.pawns_bb ||
+               (x.pawns_bb == y.pawns_bb &&
+                (x.current_piece_bb < y.current_piece_bb)))))))))))));
 }

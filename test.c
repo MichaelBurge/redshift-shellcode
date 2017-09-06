@@ -22,6 +22,31 @@ void print_iterator(iterator i)
   print_bitboard(i.pawns_bb);
 }
 
+char piece_char(int p) {
+  switch (p) {
+  case PIECE_EMPTY: return '.';
+  case PIECE_ROOK: return 'r';
+  case PIECE_KNIGHT: return 'n';
+  case PIECE_BISHOP: return 'b';
+  case PIECE_QUEEN: return 'q';
+  case PIECE_KING: return 'k';
+  case PIECE_PAWN: return 'p';
+  default: abort();
+  }
+}
+
+void print_gamestate(gamestate g)
+{
+  for (int r = 8; r --> 0;) {
+    for (int f = 0; f < 8; f++) {
+      int piece = get_piece(g, mkPosition(f, r));
+      char c = piece_char(piece);
+      putchar(c);
+    }
+    putchar('\n');
+  }
+}
+
 uint64_t n;
 
 void tick_counter(gamestate x) {
@@ -39,7 +64,7 @@ void walk_game_tree(gamestate init, int depth, ft_action f)
       move m = dereference_iterator(i);
       gamestate g = apply_move(init, m);
       walk_game_tree(g, depth-1, f);
-      iterator i2 = advance_iterator(g, i);
+      iterator i2 = advance_iterator(init, i);
       if (! iter_lt(i2, i)) {
         printf("%lu\n", n);
         print_iterator(i);
@@ -49,6 +74,11 @@ void walk_game_tree(gamestate init, int depth, ft_action f)
       i = i2;
     }
   }
+}
+
+void print_moves(gamestate g)
+{
+  walk_game_tree(g, 1, print_gamestate);
 }
 
 void assert_equal_bb(const char* message, uint64_t x, uint64_t y)
@@ -300,7 +330,7 @@ void test_iterator()
     
 void test_knight()
 {
-  // Knight in middle
+  // Knight in left bottom
   {
     uint64_t center = mkPosition(1,0);
     gamestate g = zerostate();
@@ -313,6 +343,77 @@ void test_knight()
       bit(mkPosition(3,1));
     uint64_t actual = valid_knight_moves(g, center);
     assert_equal_bb("test_knight_1", expected, actual);
+  }
+  // Knight in right bottom
+  {
+    uint64_t center = mkPosition(6,0);
+    gamestate g = zerostate();
+    g.knights_bb = bit(center);
+    g.current_piece_bb = g.knights_bb;
+
+    uint64_t expected =
+      bit(mkPosition(7,2)) |
+      bit(mkPosition(5,2)) |
+      bit(mkPosition(4,1));
+    uint64_t actual = valid_knight_moves(g, center);
+    assert_equal_bb("test_knight_2", expected, actual);
+  }
+}
+
+void test_king()
+{
+  // King in middle
+  {
+    uint64_t center = mkPosition(3,3);
+    gamestate g = zerostate();
+    g.kings_bb = bit(center);
+    g.current_piece_bb = g.kings_bb;
+
+    uint64_t expected =
+      bit(mkPosition(4,3)) |
+      bit(mkPosition(4,4)) |
+      bit(mkPosition(3,4)) |
+      bit(mkPosition(2,4)) |
+      bit(mkPosition(2,3)) |
+      bit(mkPosition(2,2)) |
+      bit(mkPosition(3,2)) |
+      bit(mkPosition(4,2));
+    uint64_t actual = valid_king_moves(g, center);
+    assert_equal_bb("test_king_1", expected, actual);
+  }
+  // King blocked on 3 sides in left corner
+  {
+    uint64_t center = mkPosition(0,0);
+    gamestate g = zerostate();
+    g.kings_bb = bit(center);
+    g.pawns_bb =
+      bit(mkPosition(1,0)) |
+      bit(mkPosition(1,1)) |
+      bit(mkPosition(0,1));
+    g.current_piece_bb = all_pieces(g);
+
+    uint64_t expected = 0;
+    uint64_t actual = valid_king_moves(g, center);
+    assert_equal_bb("test_king_2", expected, actual);
+  }
+}
+
+void test_apply_move()
+{
+  // Knight in middle
+  {
+    uint64_t center = mkPosition(3,3);
+    gamestate g = zerostate();
+    g.knights_bb = bit(center);
+    g.current_piece_bb = g.knights_bb;
+
+    iterator i = mkIterator(g);
+    move m = dereference_iterator(i);
+    assert_equal_int("test_apply_move_from", center, m.from);
+    assert_equal_int("test_apply_move_to", mkPosition(2,1), m.to);
+    gamestate g2 = apply_move(g, m);
+
+    assert_equal_bb("test_apply_move", bit(mkPosition(2,1)), g2.knights_bb);
   }
 }
 
@@ -330,14 +431,18 @@ int main() {
   test_rook();
   test_pawn();
   test_knight();
+  test_king();
   test_iterator();
+  test_apply_move();
   /* gamestate g = new_game(); */
   /* iterator i = mkIterator(g); */
   
   /* print_bitboard(i.current_piece_bb); */
-  
+
   printf("Perft(0): %d\n", perft(0));
   printf("Perft(1): %d\n", perft(1));
+
+  /* print_moves(new_game()); */
   /* printf("Perft(2): %d\n", perft(2)); */
   /* printf("Perft(3): %d\n", perft(3)); */
 }
