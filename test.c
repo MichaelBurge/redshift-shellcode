@@ -1,4 +1,4 @@
-#include <stdio.h>
+#define DEBUG 1
 #include "chess.c"
 
 typedef void (*ft_action)(gamestate x);
@@ -136,6 +136,61 @@ void test_rook()
   assert_equal_bb("test_rook", expected, actual);
 }
 
+void test_pawn()
+{
+  // Left edge
+  {
+    uint64_t center = mkPosition(0,1);
+    gamestate g = zerostate();
+    g.pawns_bb = bit(center);
+    g.current_piece_bb = g.pawns_bb;
+
+    uint64_t expected = bit(mkPosition(0,2)) | bit(mkPosition(0,3));
+    uint64_t actual = valid_pawn_moves(g, center);
+    assert_equal_bb("test_pawn_1", expected, actual);
+
+  }
+  // Right edge
+  {
+    uint64_t center = mkPosition(7,1);
+    gamestate g = zerostate();
+    g.pawns_bb = bit(center);
+    g.current_piece_bb = g.pawns_bb;
+
+    uint64_t expected = bit(mkPosition(7,2)) | bit(mkPosition(7,3));
+    uint64_t actual = valid_pawn_moves(g, center);
+    assert_equal_bb("test_pawn_2", expected, actual);
+  }
+  // Middle
+  {
+    uint64_t center = mkPosition(3,1);
+    gamestate g = zerostate();
+    g.pawns_bb = bit(center);
+    g.current_piece_bb = g.pawns_bb;
+
+    uint64_t expected = bit(mkPosition(3,2)) | bit(mkPosition(3,3));
+    uint64_t actual = valid_pawn_moves(g, center);
+    assert_equal_bb("test_pawn_3", expected, actual);
+  }
+  // Capture
+  {
+    uint64_t center = mkPosition(7,1);
+    gamestate g = zerostate();
+    g.pawns_bb = bit(center);
+    g.current_piece_bb = g.pawns_bb;
+    g.pawns_bb |= bit(move_direction(center, DIRECTION_NORTHWEST));
+    
+    uint64_t expected = bit(mkPosition(7,2)) | bit(mkPosition(7,3)) | bit(mkPosition(6,2));
+    uint64_t actual = valid_pawn_moves(g, center);
+    assert_equal_bb("test_pawn_4", expected, actual);
+  }
+}
+
+/* void test_knight() */
+/* { */
+/*   uint6 */
+/* } */
+
 int perft(int depth)
 {
   n = 0;
@@ -148,14 +203,15 @@ int perft(int depth)
 int main() {
   test_ray();
   test_rook();
+  test_pawn();
   
-  gamestate g = new_game();
-  iterator i = mkIterator(g);
+  /* gamestate g = new_game(); */
+  /* iterator i = mkIterator(g); */
   
-  print_bitboard(i.current_piece_bb);
+  /* print_bitboard(i.current_piece_bb); */
   
-  printf("Perft(0): %d\n", perft(0));
-  printf("Perft(1): %d\n", perft(1));
+  /* printf("Perft(0): %d\n", perft(0)); */
+  /* printf("Perft(1): %d\n", perft(1)); */
   /* printf("Perft(2): %d\n", perft(2)); */
   /* printf("Perft(3): %d\n", perft(3)); */
 }

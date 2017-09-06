@@ -67,9 +67,19 @@ uint64_t best_move(uint64_t rooks_bb, uint64_t knights_bb, uint64_t bishops_bb, 
 
 // Private functions
 
-private uint64_t bit(uint64_t idx) { return ((uint64_t)(1) << idx); }
+private uint64_t bit(uint64_t idx) {
+#ifdef DEBUG
+  if (idx > 64) {
+    throw "???";
+  }
+#endif
+  return ((uint64_t)(1) << idx);
+}
 private uint64_t clear_bit(uint64_t x, uint64_t idx) { return x & ~bit(idx); }
-private bool is_bit_set(uint64_t x, uint64_t idx) { return x & bit(idx); }
+private bool is_bit_set(uint64_t x, uint64_t idx) {
+  if (idx >= 64) { return false; }
+  return x & bit(idx);
+}
 private uint64_t set_bit(uint64_t x, uint64_t idx) { return x | bit(idx); }
 private uint64_t lsb_first_set(uint64_t x) { return __builtin_ctzll(x); }
 private uint64_t msb_first_set(uint64_t x) { return (127 - __builtin_clzll(x)); }
@@ -78,6 +88,11 @@ private int rank(int x) { return x / 8; }
 private int file(int x) { return x % 8; }
 private uint64_t offset(uint64_t x, int os)
 {
+#ifdef DEBUG
+  if (os >= 64 || os <= -64) {
+    throw "???";
+  }
+#endif
   if (os < 0) {
     return (x >> -os);
   } else {
@@ -100,6 +115,8 @@ const uint64_t RAY_A1H8 =
   bit(mkPosition(7,7))
   ;
 
+#ifdef DEBUG
+#include <stdio.h>
 private void print_bitboard(uint64_t bb)
 {
   for (int r = 8; r --> 0;) {
@@ -110,6 +127,7 @@ private void print_bitboard(uint64_t bb)
     putchar('\n');
   }
 }
+#endif
 
 // https://chessprogramming.wikispaces.com/On+an+empty+Board#RayAttacks
 uint64_t diagonal_mask(int center)
@@ -278,6 +296,26 @@ private int move_direction(int idx, int direction)
     return idx + RANK;
   case DIRECTION_SOUTH:
     return idx - RANK;
+  case DIRECTION_NORTHEAST:
+    if (file(idx) == 7) {
+      return POSITION_INVALID;
+    }
+    return (idx + RANK + 1);
+  case DIRECTION_NORTHWEST:
+    if (file(idx) == 0) {
+      return POSITION_INVALID;
+    }
+    return (idx + RANK - 1);
+  case DIRECTION_SOUTHEAST:
+    if (file(idx) == 7) {
+      return POSITION_INVALID;
+    }
+    return (idx - RANK + 1);
+  case DIRECTION_SOUTHWEST:
+    if (file(idx) == 0) {
+      return POSITION_INVALID;
+    }
+    return (idx - RANK - 1);
   default:
     abort();
   }
@@ -300,18 +338,30 @@ private uint64_t enemy_pieces(gamestate x)
   return all_pieces(x) ^ x.current_player_bb;
 }
 
-private uint64_t valid_pawn_moves(gamestate x, int idx)
+private uint64_t valid_pawn_moves(gamestate x, int center)
 {
-  bool is_first_move = (idx / 8 == 1);
-  uint64_t moves_bb = is_first_move
-    ? (0x7) | bit(RANK + 1)
-    : 0x7
-    ;
-  moves_bb <<= (idx-1); // Recenter the bits onto the pawn
-  moves_bb <<= 8; // And shift it up one rank
-  uint64_t captures_bb = moves_bb & enemy_pieces(x);
-  uint64_t noncaptures_bb = moves_bb & ~all_pieces(x);
-  return captures_bb | noncaptures_bb;
+  uint64_t moves_bb = 0;
+  // Non-captures
+  {
+    uint64_t noncaptures_bb = bit(center + RANK);
+    if (rank(center) == 1 && ! is_bit_set(all_pieces(x), center + RANK)) {
+      noncaptures_bb |= bit(center + RANK + RANK);
+    }
+    moves_bb |= noncaptures_bb;
+  }
+  // Captures
+  {
+    uint64_t captures_bb = 0;
+    if (file(center) > 0) {
+      captures_bb |= bit(move_direction(center + RANK, DIRECTION_WEST));
+    }
+    if (file(center) < 7) {
+      captures_bb |= bit(move_direction(center + RANK, DIRECTION_EAST));
+    }
+    captures_bb &= all_pieces(x) ^ x.current_player_bb;
+    moves_bb |= captures_bb;
+  }
+  return moves_bb;
 }
 
 private uint64_t valid_knight_moves(gamestate x, int idx)
@@ -390,15 +440,17 @@ private uint64_t shoot_ray_until_blocker(gamestate state, int idx, int direction
   uint64_t base_ray = mkRay(idx, direction);
   uint64_t blockers = base_ray & pieces;
   int blocker = closest_blocker(blockers, direction);
-  uint64_t blocker_ray = (blocker == POSITION_INVALID)
-    ? 0
-    : mkRay(blocker, direction);
-  uint64_t movable_squares_without_capture = base_ray ^ blocker_ray;
-  bool allow_capture = ! is_bit_set(state.current_player_bb, blocker);
-  if (allow_capture)
-    return movable_squares_without_capture | bit(blocker);
-  else
-    return movable_squares_without_capture;
+  if (blocker == POSITION_INVALID) {
+    return base_ray;
+  } else {
+    uint64_t blocker_ray = mkRay(blocker, direction);
+    uint64_t movable_squares_without_capture = base_ray ^ blocker_ray;
+    bool allow_capture = ! is_bit_set(state.current_player_bb, blocker);
+    if (allow_capture)
+      return movable_squares_without_capture | bit(blocker);
+    else
+      return movable_squares_without_capture;
+  }
 }
 
 private uint64_t valid_bishop_moves(gamestate x, int idx)
