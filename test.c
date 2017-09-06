@@ -1,7 +1,7 @@
 #define DEBUG 1
 #include "chess.c"
 
-typedef void (*ft_action)(gamestate x);
+typedef void (*ft_action)(gamestate, move, int);
 
 void print_iterator(iterator i)
 {
@@ -22,15 +22,15 @@ void print_iterator(iterator i)
   print_bitboard(i.pawns_bb);
 }
 
-char piece_char(int p) {
+char piece_char(int p, bool is_white) {
   switch (p) {
   case PIECE_EMPTY: return '.';
-  case PIECE_ROOK: return 'r';
-  case PIECE_KNIGHT: return 'n';
-  case PIECE_BISHOP: return 'b';
-  case PIECE_QUEEN: return 'q';
-  case PIECE_KING: return 'k';
-  case PIECE_PAWN: return 'p';
+  case PIECE_ROOK: return is_white ? 'R' : 'r';
+  case PIECE_KNIGHT: return is_white ? 'N' : 'n';
+  case PIECE_BISHOP: return is_white ? 'B' : 'b';
+  case PIECE_QUEEN: return is_white ? 'Q' : 'q';
+  case PIECE_KING: return is_white ? 'K' : 'k';
+  case PIECE_PAWN: return is_white ? 'P' : 'p';
   default: abort();
   }
 }
@@ -39,30 +39,43 @@ void print_gamestate(gamestate g)
 {
   for (int r = 8; r --> 0;) {
     for (int f = 0; f < 8; f++) {
-      int piece = get_piece(g, mkPosition(f, r));
-      char c = piece_char(piece);
+      int pos = mkPosition(f, r);
+      int piece = get_piece(g, pos);
+      bool is_white = is_bit_set(g.current_player_bb, pos);
+      char c = piece_char(piece, is_white);
       putchar(c);
     }
     putchar('\n');
   }
 }
 
+void print_pos(int pos) {
+  printf("%c%d", file(pos) + 'A', rank(pos)+1);
+}
+
+void print_move(move m) {
+  print_pos(m.from);
+  print_pos(m.to);
+}
+
 uint64_t n;
 
-void tick_counter(gamestate x) {
-  n++;
+void tick_counter(gamestate x, move m, int d) {
+  if (d == 1) 
+    n++;
 }
 
 void walk_game_tree(gamestate init, int depth, ft_action f)
 {
   if (depth <= 0) {
-    f(init);
     return;
   } else {
     iterator i = mkIterator(init);
     while (! is_iterator_finished(i)) {
       move m = dereference_iterator(i);
-      gamestate g = apply_move(init, m);
+      gamestate g = swap_board(apply_move(init, m));
+
+      f(init, m, depth);
       walk_game_tree(g, depth-1, f);
       iterator i2 = advance_iterator(init, i);
       if (! iter_lt(i2, i)) {
@@ -76,9 +89,11 @@ void walk_game_tree(gamestate init, int depth, ft_action f)
   }
 }
 
-void print_moves(gamestate g)
+void print_gamestate_action(gamestate g, move m, int d) { print_gamestate(g); }
+
+void print_moves(gamestate g, move m)
 {
-  walk_game_tree(g, 1, print_gamestate);
+  walk_game_tree(g, 1, print_gamestate_action);
 }
 
 void assert_equal_bb(const char* message, uint64_t x, uint64_t y)
@@ -147,18 +162,6 @@ void test_ray()
     bit(mkPosition(2,3)) |
     bit(mkPosition(1,3))|
     bit(mkPosition(0,3));
-  /* printf("== RAY_A1A8\n"); */
-  /* print_bitboard(RAY_A1A8); */
-  /* printf("== RAY_H1H8\n"); */
-  /* print_bitboard(RAY_H1H8); */
-  /* printf("== offset(RAY, 1)\n"); */
-  /* print_bitboard(offset(RAY_A8H1, 1)); */
-
-  /* printf("== offset(RAY, RANK)\n"); */
-  /* print_bitboard(offset(RAY_A8H1, RANK)); */
-
-  /*   printf("== offset(RAY, -RANK)\n"); */
-  /* print_bitboard(offset(RAY_A8H1, -RANK)); */
 
   assert_equal_bb("nw", nw_ray, mkRay(center, DIRECTION_NORTHWEST));
   assert_equal_bb("n",  n_ray,  mkRay(center, DIRECTION_NORTH));
@@ -261,6 +264,17 @@ void test_pawn()
     uint64_t expected = bit(mkPosition(7,2)) | bit(mkPosition(7,3)) | bit(mkPosition(6,2));
     uint64_t actual = valid_pawn_moves(g, center);
     assert_equal_bb("test_pawn_4", expected, actual);
+  }
+  // Blocked by another piece
+  {
+    uint64_t center = mkPosition(0,1);
+    gamestate g = zerostate();
+    g.pawns_bb = bit(center) | bit(center + RANK);
+    g.current_piece_bb = g.pawns_bb;
+    
+    uint64_t expected = 0;
+    uint64_t actual = valid_pawn_moves(g, center);
+    assert_equal_bb("test_pawn_5", expected, actual);
   }
 }
 
@@ -415,6 +429,25 @@ void test_apply_move()
 
     assert_equal_bb("test_apply_move", bit(mkPosition(2,1)), g2.knights_bb);
   }
+  // Doesn't affect other pieces
+  {
+    uint64_t center = mkPosition(3,3);
+    gamestate g = zerostate();
+    g.knights_bb = bit(center);
+    g.current_piece_bb = g.knights_bb;
+    g.knights_bb |=
+      bit(mkPosition(1,0)) |
+      bit(mkPosition(6,0));
+
+    iterator i = mkIterator(g);
+    move m = dereference_iterator(i);
+    assert_equal_int("test_apply_move_from", center, m.from);
+    assert_equal_int("test_apply_move_to", mkPosition(2,1), m.to);
+    gamestate g2 = apply_move(g, m);
+
+    uint64_t expected = bit(m.to) | bit(mkPosition(1,0)) | bit(mkPosition(6,0));
+    assert_equal_bb("test_apply_move", expected, g2.knights_bb);
+  }
 }
 
 int perft(int depth)
@@ -425,6 +458,51 @@ int perft(int depth)
   return n;
 }
 
+int perft_divide_depth;
+
+
+void perft_divide_helper1(gamestate g, move m, int d)
+{
+  n = 0;
+  gamestate g2 = swap_board(apply_move(g, m));
+  walk_game_tree(g2, perft_divide_depth, tick_counter);
+  print_move(m);
+  printf(": %lu\n", n);
+}
+
+int perft_divide(gamestate g, int depth)
+{
+  perft_divide_depth = depth;
+  walk_game_tree(g, 1, perft_divide_helper1);
+}
+
+void print_fen(gamestate g)
+{
+  int empty_squares = 0;
+  for (int r = 8; r --> 0;) {
+    for (int f = 0; f < 8; f++) {
+      int pos = mkPosition(f, r);
+      int piece = get_piece(g, pos);
+      if (piece == PIECE_EMPTY) {
+        empty_squares++;
+        continue;
+      } else if (empty_squares > 0) {
+        printf("%d", empty_squares);
+        empty_squares = 0;
+      }
+      bool is_white = is_bit_set(g.current_player_bb, pos);
+      char c = piece_char(piece, is_white);
+      putchar(c);
+    }
+    if (empty_squares > 0) {
+      printf("%d", empty_squares);
+      empty_squares = 0;
+    }
+    if (r > 0)
+      putchar('/');
+  }
+  printf(" w - KQkq 0 1\n");
+}
 
 int main() {
   test_ray();
@@ -439,10 +517,24 @@ int main() {
   
   /* print_bitboard(i.current_piece_bb); */
 
+  gamestate g = new_game();
+  perft_divide(g,1);
+  /* print_fen(g); */
+  /* // 1: B1A3 */
+  move m1; m1.from = mkPosition(1,0); m1.to = mkPosition(0,2);
+  g = swap_board(apply_move(g, m1));
+  /* // 2: B1A3 */
+  g = swap_board(apply_move(g, m1));
+  print_fen(g);
+  print_gamestate(g);
+  perft_divide(g, 1);
+  
+  
   printf("Perft(0): %d\n", perft(0));
   printf("Perft(1): %d\n", perft(1));
-
-  /* print_moves(new_game()); */
-  /* printf("Perft(2): %d\n", perft(2)); */
-  /* printf("Perft(3): %d\n", perft(3)); */
+  printf("Perft(2): %d\n", perft(2));
+  printf("Perft(3): %d\n", perft(3));
+  printf("Perft(4): %d\n", perft(4));
+  printf("Perft(5): %d\n", perft(5));
+  printf("Perft(6): %d\n", perft(6));
 }

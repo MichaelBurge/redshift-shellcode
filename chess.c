@@ -199,7 +199,7 @@ private uint64_t rotate_bb(uint64_t x)
 
 const uint64_t RAY_A8H1 = rotate_bb(RAY_A1H8);
 
-private int get_piece_bb(gamestate x, int piece)
+private uint64_t get_piece_bb(gamestate x, int piece)
 {
   switch (piece) {
   case PIECE_ROOK:
@@ -267,7 +267,7 @@ private int iterator_position(iterator x)
   if (piece == PIECE_EMPTY) {
     return POSITION_INVALID;
   } 
-  int piece_bb = get_piece_bb(x, piece);
+  uint64_t piece_bb = get_piece_bb(x, piece);
   int idx = lsb_first_set(piece_bb);
   return idx;
 }
@@ -372,7 +372,7 @@ private uint64_t valid_pawn_moves(gamestate x, int center)
 {
   uint64_t moves_bb = 0;
   // Non-captures
-  {
+  if (! is_bit_set(all_pieces(x), center + RANK)) {
     uint64_t noncaptures_bb = bit(center + RANK);
     if (rank(center) == 1 && ! is_bit_set(all_pieces(x), center + RANK)) {
       noncaptures_bb |= bit(center + RANK + RANK);
@@ -690,6 +690,21 @@ private gamestate new_game()
   return x;
 }
 
+// Flips the board so white is black and black is white.
+// In our model, it is always white's turn to move.
+private gamestate swap_board(gamestate g)
+{
+  g.current_player_bb ^= all_pieces(g);
+  g.rooks_bb = __builtin_bswap64(g.rooks_bb);
+  g.knights_bb = __builtin_bswap64(g.knights_bb);
+  g.bishops_bb = __builtin_bswap64(g.bishops_bb);
+  g.queens_bb = __builtin_bswap64(g.queens_bb);
+  g.kings_bb = __builtin_bswap64(g.kings_bb);
+  g.pawns_bb = __builtin_bswap64(g.pawns_bb);
+  g.current_player_bb = __builtin_bswap64(g.current_player_bb);
+  return g;
+}
+
 private gamestate apply_move(gamestate x, move m)
 {
   int from_piece = get_piece(x, m.from);
@@ -700,6 +715,10 @@ private gamestate apply_move(gamestate x, move m)
   }
   uint64_t from_bb = get_piece_bb(x, from_piece);
   x = set_piece_bb(x, from_piece, clear_bit(from_bb, m.from) | bit(m.to));
+
+  // Set colors
+  x.current_player_bb = clear_bit(x.current_player_bb, m.from) | bit(m.to);
+  
   return x;
 }
 
