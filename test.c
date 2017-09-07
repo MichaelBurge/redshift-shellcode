@@ -49,13 +49,18 @@ void print_gamestate(gamestate g)
   }
 }
 
-void print_pos(int pos) {
-  printf("%c%d", file(pos) + 'a', rank(pos)+1);
-}
-
 void print_move(move m) {
   print_pos(m.from);
   print_pos(m.to);
+  int piece = promotion_piece(m);
+  switch (piece) {
+  case PIECE_EMPTY: break;
+  case PIECE_ROOK: printf("/R");
+  case PIECE_KNIGHT: printf("/K");
+  case PIECE_BISHOP: printf("/B");
+  case PIECE_QUEEN: printf("/Q");
+  default: abort();
+  }
 }
 
 uint64_t n;
@@ -928,12 +933,57 @@ void test_castling()
   }
 }
 
-int perft(int depth)
+void test_promotions()
+{
+  gamestate g = zerostate();
+  g.pawns_bb = bit(mkPosition(0,6));
+  g.current_player_bb = all_pieces(g);
+  // Promotion to Rook
+  {
+    move m = mkPromotion(g, mkPosition(0,6), PIECE_ROOK);
+    gamestate g2 = apply_move(g, m);
+    assert_equal_bb("test_promotions_1_pawns", 0, g2.pawns_bb);
+    assert_equal_bb("test_promotions_1_rooks", bit(mkPosition(0,7)), g2.rooks_bb);
+  }
+  // Promotion to Knight
+  {
+    move m = mkPromotion(g, mkPosition(0,6), PIECE_KNIGHT);
+    gamestate g2 = apply_move(g, m);
+    assert_equal_bb("test_promotions_2_pawns", 0, g2.pawns_bb);
+    assert_equal_bb("test_promotions_2_knights", bit(mkPosition(0,7)), g2.knights_bb);
+
+  }
+  // Promotion to Bishop
+  {
+        move m = mkPromotion(g, mkPosition(0,6), PIECE_BISHOP);
+    gamestate g2 = apply_move(g, m);
+    assert_equal_bb("test_promotions_3_pawns", 0, g2.pawns_bb);
+    assert_equal_bb("test_promotions_3_bishops", bit(mkPosition(0,7)), g2.bishops_bb);
+
+  }
+  // Promotion to Queen
+  {
+    move m = mkPromotion(g, mkPosition(0,6), PIECE_QUEEN);
+    gamestate g2 = apply_move(g, m);
+    assert_equal_bb("test_promotions_4_pawns", 0, g2.pawns_bb);
+    assert_equal_bb("test_promotions_4_queens", bit(mkPosition(0,7)), g2.queens_bb);
+  }
+  // Iterator generates promotions
+  {
+    assert_equal_int("test_promotions_5_num_moves", 4, num_legal_moves(g));
+  }
+}
+
+uint64_t perft_from(gamestate g, int depth)
 {
   n = 0;
-  gamestate init = new_game();
-  walk_game_tree(init, depth, tick_counter);
+  walk_game_tree(g, depth, tick_counter);
   return n;
+}
+
+uint64_t perft(int depth)
+{
+  return perft_from(new_game(), depth);
 }
 
 int perft_divide_depth;
@@ -1015,21 +1065,22 @@ int main() {
   test_apply_move();
   test_check();
   test_castling();
+  test_promotions();
   /* gamestate g = new_game(); */
   /* iterator i = mkIterator(g); */
   
   /* print_bitboard(i.current_piece_bb); */
 
   gamestate g = new_game();
-  // 1: b1a3
-  move m1; m1.from = mkPosition(1,0); m1.to = mkPosition(0,3);
-  /* g = swap_board(apply_move(g, m1)); */
-  /* // 2: b2b3 */
-  /* move m2; m2.from = mkPosition(1,1); m2.to = mkPosition(1,2); */
-  /* g = swap_board(apply_move(g, m2)); */
-  /* // 3: a1b1 */
-  /* move m3; m3.from = mkPosition(0,0); m3.to = mkPosition(1,0); */
-  /* g = swap_board(apply_move(g, m3)); */
+  // 1: c2c4
+  move m1; m1.from = mkPosition(2,1); m1.to = mkPosition(2,3);
+  g = swap_board(apply_move(g, m1));
+  // 2: d2d4
+  move m2; m2.from = mkPosition(3,1); m2.to = mkPosition(3,3);
+  g = swap_board(apply_move(g, m2));
+  // 3: c4d5
+  move m3; m3.from = mkPosition(2,3); m3.to = mkPosition(3,4);
+  g = swap_board(apply_move(g, m3));
   /* // 4: c1a3 */
   /* move m4; m4.from = mkPosition(2,0); m4.to = mkPosition(0,2); */
   /* g = swap_board(apply_move(g, m4)); */
@@ -1052,18 +1103,18 @@ int main() {
   /* g = swap_board(apply_move(g, m1)); */
   print_fen(g);
   /* /\* print_gamestate(g); *\/ */
-  perft_divide(g, 0);;
+  perft_divide(g, 1);
   /* print_gamestate(g); */
   /* printf("== rooks\n"); print_bitboard(g.rooks_bb); */
   /* printf("== pawns\n"); print_bitboard(g.pawns_bb); */
 
   /* print_moves(g); */
   
-  printf("Perft(0): %d\n", perft(0));
-  printf("Perft(1): %d\n", perft(1));
-  printf("Perft(2): %d\n", perft(2));
-  printf("Perft(3): %d\n", perft(3));
-  printf("Perft(4): %d\n", perft(4));
-  printf("Perft(5): %d\n", perft(5));
-  printf("Perft(6): %d\n", perft(6)); 
+  printf("Perft(0): %lu\n", perft(0));
+  printf("Perft(1): %lu\n", perft(1));
+  printf("Perft(2): %lu\n", perft(2));
+  printf("Perft(3): %lu\n", perft(3));
+  printf("Perft(4): %lu\n", perft(4));
+  printf("Perft(5): %lu\n", perft(5));
+  printf("Perft(6): %lu\n", perft(6));
 }
