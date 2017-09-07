@@ -6,6 +6,7 @@ typedef void (*ft_action)(gamestate, move, int);
 void print_iterator(iterator i)
 {
   printf("ITERATOR\n");
+  printf("== Promotion piece: %lu\n", i.promotion_piece);
   printf("== Current pieces\n");
   print_bitboard(i.current_piece_bb);
   printf("== Rooks\n");
@@ -60,14 +61,14 @@ void print_gamestate(gamestate g)
 
 void print_move(move m) {
   print_pos(m.from);
-  print_pos(m.to);
+  print_pos(m.to & 0x3F);
   int piece = promotion_piece(m);
   switch (piece) {
   case PIECE_EMPTY: break;
-  case PIECE_ROOK: printf("/R");
-  case PIECE_KNIGHT: printf("/K");
-  case PIECE_BISHOP: printf("/B");
-  case PIECE_QUEEN: printf("/Q");
+  case PIECE_ROOK: printf("/R"); break;
+  case PIECE_KNIGHT: printf("/K"); break;
+  case PIECE_BISHOP: printf("/B"); break;
+  case PIECE_QUEEN: printf("/Q"); break;
   default: abort();
   }
 }
@@ -1010,6 +1011,50 @@ void test_castling()
     gamestate g2 = apply_move(g, m);
     assert_equal_u64("test_castling_12_flag_king_delete", 0, g2.castle_flags);
   }
+  // Can't castle with unit blocking rook queenside
+  {
+    gamestate g = zerostate();
+    g.kings_bb = bit(mkPosition(4,0));
+    g.rooks_bb = bit(mkPosition(0,0));
+    g.castle_flags = CASTLE_WHITE_QUEENSIDE;
+    g.knights_bb = bit(mkPosition(1,0));
+    g.current_piece_bb = all_pieces(g);
+
+    uint64_t expected =
+      bit(mkPosition(3,0)) |
+      bit(mkPosition(3,1)) |
+      bit(mkPosition(4,1)) |
+      bit(mkPosition(5,1)) |
+      bit(mkPosition(5,0));
+    uint64_t actual = piece_legal_movepoints(g, mkPosition(4,0));
+    assert_equal_bb("test_castling_13_knight_blocks_rook_queenside", expected, actual);
+  }
+  // Eating a rook cancels its flag
+  {
+    gamestate g = zerostate();
+    g.rooks_bb =
+      bit(mkPosition(7,0)) |
+      bit(mkPosition(0,0));
+    g.current_piece_bb = g.rooks_bb;
+    g.rooks_bb |=
+      bit(mkPosition(7,7)) |
+      bit(mkPosition(0,7));
+    g.castle_flags =
+      CASTLE_BLACK_QUEENSIDE |
+      CASTLE_BLACK_KINGSIDE;
+    // West Rook
+    {
+      move m; m.from = mkPosition(7,0); m.to = mkPosition(7,7);
+      gamestate g2 = apply_move(g, m);
+      assert_equal_u64("test_castling_13_remove_flag_on_eat_rook_1", CASTLE_BLACK_QUEENSIDE, g2.castle_flags);
+    }
+    // East Rook
+    {
+      move m; m.from = mkPosition(0,0); m.to = mkPosition(0,7);
+      gamestate g2 = apply_move(g, m);
+      assert_equal_u64("test_castling_13_remove_flag_on_eat_rook_2", CASTLE_BLACK_KINGSIDE, g2.castle_flags);
+    }
+  }
 }
 
 void test_promotions()
@@ -1034,7 +1079,7 @@ void test_promotions()
   }
   // Promotion to Bishop
   {
-        move m = mkPromotion(g, mkPosition(0,6), PIECE_BISHOP);
+    move m = mkPromotion(g, mkPosition(0,6), PIECE_BISHOP);
     gamestate g2 = apply_move(g, m);
     assert_equal_bb("test_promotions_3_pawns", 0, g2.pawns_bb);
     assert_equal_bb("test_promotions_3_bishops", bit(mkPosition(0,7)), g2.bishops_bb);
@@ -1050,6 +1095,31 @@ void test_promotions()
   // Iterator generates promotions
   {
     assert_equal_int("test_promotions_5_num_moves", 4, num_legal_moves(g));
+    iterator i = mkLegalIterator(g);
+    move m1 = dereference_iterator(i); i = advance_iterator_legal(g,i);
+    move m2 = dereference_iterator(i); i = advance_iterator_legal(g,i);
+    move m3 = dereference_iterator(i); i = advance_iterator_legal(g,i);
+    move m4 = dereference_iterator(i); i = advance_iterator_legal(g,i);
+    assert_equal_int("test_promotions_5_m1_pc", PIECE_QUEEN, promotion_piece(m1));
+    assert_equal_int("test_promotions_5_m2_pc", PIECE_BISHOP, promotion_piece(m2));
+    assert_equal_int("test_promotions_5_m3_pc", PIECE_KNIGHT, promotion_piece(m3));
+    assert_equal_int("test_promotions_5_m4_pc", PIECE_ROOK, promotion_piece(m4));
+  }
+  // Iterator generates promotions 2
+  {
+    gamestate g = zerostate();
+    g.pawns_bb = bit(mkPosition(1,6));
+    g.current_player_bb = all_pieces(g);
+    g.bishops_bb =
+      bit(mkPosition(0,7)) |
+      bit(mkPosition(2,7));
+
+    iterator i = mkLegalIterator(g);
+    move m1 = dereference_iterator(i); i = advance_iterator_legal(g,i);
+    move m2 = dereference_iterator(i); i = advance_iterator_legal(g,i);
+    move m3 = dereference_iterator(i); i = advance_iterator_legal(g,i);
+    move m4 = dereference_iterator(i); i = advance_iterator_legal(g,i);
+    assert_equal_int("test_promotions_6_num_moves", 12, num_legal_moves(g));
   }
 }
 
@@ -1202,30 +1272,46 @@ void test_perft()
   // Initial position(read from string)
   {
     gamestate g = parse_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-    /* assert_equal_u64("Perft(1)", 20,      perft_from(g,1)); */
-    /* assert_equal_u64("Perft(2)", 400,     perft_from(g,2)); */
-    /* assert_equal_u64("Perft(3)", 8902,    perft_from(g,3)); */
-    /* assert_equal_u64("Perft(4)", 197281,  perft_from(g,4)); */
+    assert_equal_u64("Perft(1)", 20,      perft_from(g,1));
+    assert_equal_u64("Perft(2)", 400,     perft_from(g,2));
+    assert_equal_u64("Perft(3)", 8902,    perft_from(g,3));
+    assert_equal_u64("Perft(4)", 197281,  perft_from(g,4));
     /* assert_equal_u64("Perft(5)", 4865609, perft_from(g,5)); */
     /* assert_equal_u64("Perft(6)", 119060324, perft_from(g,6)); */
     /* assert_equal_u64("Perft(7)", 3195901860, perft_from(g,7)); */
     
   }
-  // Promotion position
+  // Castling position
   {
     gamestate g = parse_fen("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
-    // 1: e1g1
-    /* move m; m.from = mkPosition(4,0); m.to = mkPosition(6,0); */
+    // 1: e5f7 - (88799, 88825)
+    /* move m; m.from = mkPosition(4,4); m.to = mkPosition(5,6); */
     /* g = swap_board(apply_move(g, m)); */
-    perft_divide(g, 0);
-    /* print_gamestate(g); */
+    /* // 2: a1b1 - (2126,2127) */
+    /* move m2; m2.from = mkPosition(0,0); m2.to = mkPosition(1,0); */
+    /* g = swap_board(apply_move(g, m2)); */
+    /* // 3: f7h8 - (40, 41) */
+    /* move m3; m3.from = mkPosition(5,6); m3.to = mkPosition(7,7); */
+    /* g = swap_board(apply_move(g, m3)); */
+    /* perft_divide(g, 1); */
+    /* /\* print_gamestate(g); *\/ */
     /* print_fen(g); */
-    assert_equal_u64("good_perft_1", 48,          perft_from(g,1));
-    assert_equal_u64("good_perft_2", 2039,        perft_from(g,2));
-    assert_equal_u64("good_perft_3", 97862,       perft_from(g,3));
-    assert_equal_u64("good_perft_4", 4085603,     perft_from(g,4));
-    /* assert_equal_u64("promotion_perft_5", 193690690,   perft_from(g,5)); */
-    /* assert_equal_u64("promotion_perft_6", 8031647685,  perft_from(g,6)); */
+    assert_equal_u64("castling_perft_1", 48,          perft_from(g,1));
+    assert_equal_u64("castling_perft_2", 2039,        perft_from(g,2));
+    assert_equal_u64("castling_perft_3", 97862,       perft_from(g,3));
+    assert_equal_u64("castling_perft_4", 4085603,     perft_from(g,4));
+    /* assert_equal_u64("castling_perft_5", 193690690,   perft_from(g,5)); */
+    /* assert_equal_u64("good_perft_6", 8031647685,  perft_from(g,6)); */
+  }
+  // Promotion position
+  {
+    gamestate g = parse_fen("n1n5/PPPk4/8/8/8/8/4Kppp/5N1N b - - 0 1");
+    assert_equal_u64("promotion_perft_1", 24,          perft_from(g,1));
+    assert_equal_u64("promotion_perft_2", 496,         perft_from(g,2));
+    assert_equal_u64("promotion_perft_3", 9483,        perft_from(g,3));
+    assert_equal_u64("promotion_perft_4", 182838,      perft_from(g,4));
+    assert_equal_u64("promotion_perft_5", 3605103,     perft_from(g,5));
+    assert_equal_u64("promotion_perft_6", 71179139,     perft_from(g,6));
   }
 }
 

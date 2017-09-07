@@ -308,12 +308,18 @@ private int iterator_position(iterator x)
   return idx;
 }
 
-private move dereference_iterator(iterator x)
+private int promotion_piece(move m)
 {
-  move y;
-  y.from = iterator_position(x);
-  y.to = lsb_first_set(x.current_piece_bb);
-  return y;
+  return (m.to >> 6);
+}
+
+private move dereference_iterator(iterator i)
+{
+  move m;
+  m.from = iterator_position(i);
+  m.to = lsb_first_set(i.current_piece_bb);
+  m.to |= (i.promotion_piece << 6);
+  return m;
 }
 
 private uint64_t advance_bb_iterator(uint64_t x)
@@ -575,7 +581,8 @@ private uint64_t valid_king_moves(gamestate g, int idx)
   if ((g.castle_flags & CASTLE_WHITE_QUEENSIDE)) {
     uint64_t pcs = all_pieces(g);
     if (is_bit_set(pcs, CASTLE_QUEENSIDE_RPOS) ||
-        is_bit_set(pcs, CASTLE_QUEENSIDE_KPOS)) {
+        is_bit_set(pcs, CASTLE_QUEENSIDE_KPOS) ||
+        is_bit_set(pcs, CASTLE_QUEENSIDE_KPOS-1)) {
       goto skip_queenside;
     }
     ret |= bit(CASTLE_QUEENSIDE_KPOS);
@@ -631,58 +638,67 @@ private uint64_t valid_piece_moves(gamestate x, int idx)
   }
 }
 
-private iterator reset_iterator_moves(gamestate g, iterator x)
+private iterator reset_iterator_promotion_piece(gamestate g, iterator i)
 {
-  if (is_iterator_finished(x)) {
+  if (is_iterator_finished(i)) {
+    return i;
+  }
+  int idx = iterator_position(i);
+  int piece = get_piece(g, idx);
+  if (piece == PIECE_PAWN &&
+      rank(idx) == 6 &&
+      i.current_piece_bb != 0) {
+    i.promotion_piece = PIECE_QUEEN;
+  }
+  return i;  
+}
+
+private iterator reset_iterator_moves(gamestate g, iterator i)
+{
+  if (is_iterator_finished(i)) {
     return zerostate();
   } else {
-    int idx = iterator_position(x);
+    int idx = iterator_position(i);
     uint64_t moves = valid_piece_moves(g, idx);
-    x.current_piece_bb = moves;
-
-    int piece = get_piece(g, idx);
-    if (piece == PIECE_PAWN &&
-        rank(idx) == 6 &&
-        x.current_piece_bb != 0) {
-      x.promotion_piece = PIECE_QUEEN;
-    }
-    return x;
+    i.current_piece_bb = moves;
+    i = reset_iterator_promotion_piece(g, i);
+    return i;
   }
 }
 
-
-private iterator advance_iterator(gamestate g, iterator x)
+private iterator advance_iterator(gamestate g, iterator i)
 {
-  if (x.current_piece_bb) {
-    if (x.promotion_piece) {
-      x.promotion_piece--;
+  if (i.current_piece_bb) {
+    if (i.promotion_piece) {
+      i.promotion_piece--;
     }
-    if (!x.promotion_piece) {
-      x.current_piece_bb = advance_bb_iterator(x.current_piece_bb);
+    if (!i.promotion_piece) {
+      i.current_piece_bb = advance_bb_iterator(i.current_piece_bb);
+      i = reset_iterator_promotion_piece(g, i);
     }
   }
 
-  while (! is_iterator_finished(x) && ! x.current_piece_bb) {
-    if (x.rooks_bb) {
-      x.rooks_bb = advance_bb_iterator(x.rooks_bb);
-    } else if (x.knights_bb) {
-      x.knights_bb = advance_bb_iterator(x.knights_bb);
-    } else if (x.bishops_bb) {
-      x.bishops_bb = advance_bb_iterator(x.bishops_bb);
-    } else if (x.queens_bb) {
-      x.queens_bb = advance_bb_iterator(x.queens_bb);
-    } else if (x.kings_bb) {
-      x.kings_bb = advance_bb_iterator(x.kings_bb);
-    } else if (x.pawns_bb) {
-      x.pawns_bb = advance_bb_iterator(x.pawns_bb);
+  while (! is_iterator_finished(i) && ! i.current_piece_bb) {
+    if (i.rooks_bb) {
+      i.rooks_bb = advance_bb_iterator(i.rooks_bb);
+    } else if (i.knights_bb) {
+      i.knights_bb = advance_bb_iterator(i.knights_bb);
+    } else if (i.bishops_bb) {
+      i.bishops_bb = advance_bb_iterator(i.bishops_bb);
+    } else if (i.queens_bb) {
+      i.queens_bb = advance_bb_iterator(i.queens_bb);
+    } else if (i.kings_bb) {
+      i.kings_bb = advance_bb_iterator(i.kings_bb);
+    } else if (i.pawns_bb) {
+      i.pawns_bb = advance_bb_iterator(i.pawns_bb);
     }
-    x = reset_iterator_moves(g, x);
+    i = reset_iterator_moves(g, i);
   }
-  if (is_iterator_finished(x) && x.current_piece_bb != 0) {
+  if (is_iterator_finished(i) && i.current_piece_bb != 0) {
     abort();
   }
   
-  return x;
+  return i;
 }
 
 private gamestate switch_sides(gamestate x)
@@ -807,19 +823,15 @@ private bool is_queenside_castle(gamestate g, move m)
     (g.castle_flags & CASTLE_WHITE_QUEENSIDE);
 }
 
-private int promotion_piece(move m)
-{
-  return (m.to >> 6);
-}
-
 private bool is_promotion(move m) { return promotion_piece(m) == PIECE_EMPTY; }
 
 private gamestate apply_move(gamestate g, move m)
 {
   gamestate g_orig = g;
   int from_piece = get_piece(g, m.from);
-  int to_piece = get_piece(g, m.to);
   int prom_piece = promotion_piece(m);
+  m.to &= 0x3F;
+  int to_piece = get_piece(g, m.to);
   if (to_piece != PIECE_EMPTY) {
     uint64_t to_bb = get_piece_bb(g, to_piece);
     g = set_piece_bb(g, to_piece, clear_bit(to_bb, m.to));
@@ -830,7 +842,6 @@ private gamestate apply_move(gamestate g, move m)
     g = set_piece_bb(g, from_piece, clear_bit(from_bb, m.from) | bit(m.to));
     // Promotions
   } else {
-    m.to = m.from + RANK;
     uint64_t piece_bb = get_piece_bb(g, prom_piece);
     g.pawns_bb = clear_bit(g.pawns_bb, m.from);
     g = set_piece_bb(g, prom_piece, piece_bb | bit(m.to));
@@ -861,19 +872,29 @@ private gamestate apply_move(gamestate g, move m)
     g.rooks_bb = set_bit(g.rooks_bb, CASTLE_QUEENSIDE_RPOS);
     g.current_piece_bb = set_bit(g.current_piece_bb, CASTLE_QUEENSIDE_RPOS);
   }
-  // Clear left rook flags
+  // Clear kingside rook flags
   if (g.castle_flags & CASTLE_WHITE_KINGSIDE &&
       from_piece == PIECE_ROOK &&
       m.from == mkPosition(7,0)) {
     g.castle_flags &= ~CASTLE_WHITE_KINGSIDE;
   }
-  // Clear right rook flags
+  // Clear queenside rook flags
   if (g.castle_flags & CASTLE_WHITE_QUEENSIDE &&
       from_piece == PIECE_ROOK &&
       m.from == mkPosition(0,0)) {
     g.castle_flags &= ~CASTLE_WHITE_QUEENSIDE;
   }
-  // Clear king flags
+  // Clear eaten kingside rook flags
+  if (to_piece == PIECE_ROOK &&
+      m.to == mkPosition(7,7)) {
+    g.castle_flags &= ~CASTLE_BLACK_KINGSIDE;
+  }
+  // Clear eaten queenside rook flags
+  if (to_piece == PIECE_ROOK &&
+      m.to == mkPosition(0,7)) {
+    g.castle_flags &= ~CASTLE_BLACK_QUEENSIDE;
+  }
+  // Clear king's castling flags
   if (from_piece == PIECE_KING) {
     g.castle_flags &= ~(CASTLE_WHITE_KINGSIDE | CASTLE_WHITE_QUEENSIDE);
   }
