@@ -22,6 +22,7 @@ typedef struct gamestate {
     uint64_t current_piece_bb; // For iterators
   };
   int en_passant_sq;
+  int castle_flags;
 } gamestate;
 
 struct move {
@@ -49,6 +50,17 @@ const int DIRECTION_NORTHEAST = 4;
 const int DIRECTION_NORTHWEST = 5;
 const int DIRECTION_SOUTHEAST = 6;
 const int DIRECTION_SOUTHWEST = 7;
+
+// CASTLE FLAGS
+const int CASTLE_WHITE_KINGSIDE = 0x1;
+const int CASTLE_WHITE_QUEENSIDE = 0x2;
+const int CASTLE_BLACK_KINGSIDE = 0x4;
+const int CASTLE_BLACK_QUEENSIDE = 0x8;
+
+const int CASTLE_KINGSIDE_KPOS = 6;
+const int CASTLE_QUEENSIDE_KPOS = 2;
+const int CASTLE_KINGSIDE_RPOS = 5;
+const int CASTLE_QUEENSIDE_RPOS = 3;
 
 const int NUM_BOARD_SQUARES = 8*8;
 
@@ -110,6 +122,7 @@ private gamestate zerostate()
   x.kings_bb = 0;
   x.pawns_bb = 0;
   x.en_passant_sq = POSITION_INVALID;
+  x.castle_flags = 0;
   return x;
 }
 
@@ -180,6 +193,16 @@ private uint64_t flipDiagA1H8(uint64_t x)
   return x;
 }
 
+private uint64_t mirror_horizontal (uint64_t x) {
+   const uint64_t k1 = 0x5555555555555555;
+   const uint64_t k2 = 0x3333333333333333;
+   const uint64_t k4 = 0x0f0f0f0f0f0f0f0f;
+   x = ((x >> 1) & k1) +  2*(x & k1);
+   x = ((x >> 2) & k2) +  4*(x & k2);
+   x = ((x >> 4) & k4) + 16*(x & k4);
+   return x;
+}
+
 private uint64_t flip_vertical(uint64_t x)
 {
   return
@@ -191,6 +214,13 @@ private uint64_t flip_vertical(uint64_t x)
     ( (x >> 24) & (0x0000000000ff0000) ) |
     ( (x >> 40) & (0x000000000000ff00) ) |
     ( (x >> 56)                        );
+}
+
+// We use a monochrome board, so white is always the one to move, and we flip the board after each move.
+private uint64_t flip_bb(uint64_t x)
+{
+  return __builtin_bswap64(x);
+  //return mirror_horizontal(__builtin_bswap64(x));
 }
 
 private uint64_t rotate_bb(uint64_t x)
@@ -487,12 +517,12 @@ private uint64_t shoot_ray_until_blocker(gamestate state, int idx, int direction
     return base_ray;
   } else {
     uint64_t blocker_ray = mkRay(blocker, direction);
-    uint64_t movable_squares_without_capture = base_ray ^ blocker_ray ^ bit(blocker);
+    uint64_t movable_squares_without_capture = base_ray ^ blocker_ray;
     bool allow_capture = ! is_bit_set(state.current_player_bb, blocker);
     if (allow_capture)
       return movable_squares_without_capture | bit(blocker);
     else
-      return movable_squares_without_capture;
+      return movable_squares_without_capture & ~bit(blocker);
   }
 }
 
@@ -516,7 +546,7 @@ private uint64_t valid_rook_moves(gamestate x, int idx)
     ;
 }
 
-private uint64_t valid_king_moves(gamestate x, int idx)
+private uint64_t valid_king_moves(gamestate g, int idx)
 {
   uint64_t ret =
     bit(move_direction(idx, DIRECTION_EAST)) |
@@ -528,7 +558,25 @@ private uint64_t valid_king_moves(gamestate x, int idx)
     bit(move_direction(idx, DIRECTION_NORTHWEST)) |
     bit(move_direction(idx, DIRECTION_SOUTHWEST))
     ;
-  ret &= ~ x.current_piece_bb;
+  if ((g.castle_flags & CASTLE_WHITE_KINGSIDE)) {
+    uint64_t pcs = all_pieces(g);
+    if (is_bit_set(pcs, CASTLE_KINGSIDE_KPOS) ||
+        is_bit_set(pcs, CASTLE_KINGSIDE_RPOS)) {
+      goto skip_kingside;
+    }
+    ret |= bit(CASTLE_KINGSIDE_KPOS);
+  }
+ skip_kingside:
+  if ((g.castle_flags & CASTLE_WHITE_QUEENSIDE)) {
+    uint64_t pcs = all_pieces(g);
+    if (is_bit_set(pcs, CASTLE_QUEENSIDE_RPOS) ||
+        is_bit_set(pcs, CASTLE_QUEENSIDE_KPOS)) {
+      goto skip_queenside;
+    }
+    ret |= bit(CASTLE_QUEENSIDE_KPOS);
+  }
+ skip_queenside:
+  ret &= ~ g.current_piece_bb;
   return ret;
 }
 
@@ -680,15 +728,16 @@ private gamestate new_game()
     bit(mkPosition(5,7));
   x.queens_bb =
     bit(mkPosition(3,0)) |
-    bit(mkPosition(4,7));
+    bit(mkPosition(3,7));
   x.kings_bb =
     bit(mkPosition(4,0)) |
-    bit(mkPosition(3,7));
+    bit(mkPosition(4,7));
   x.pawns_bb =
     ((uint64_t)0xFF << RANK) |
     ((uint64_t)0xFF << (6*RANK));
   x.current_player_bb = 0xFFFF;
   x.en_passant_sq = POSITION_INVALID;
+  x.castle_flags = 0xF;
   return x;
 }
 
@@ -697,44 +746,84 @@ private gamestate new_game()
 private gamestate swap_board(gamestate g)
 {
   g.current_player_bb ^= all_pieces(g);
-  g.rooks_bb = __builtin_bswap64(g.rooks_bb);
-  g.knights_bb = __builtin_bswap64(g.knights_bb);
-  g.bishops_bb = __builtin_bswap64(g.bishops_bb);
-  g.queens_bb = __builtin_bswap64(g.queens_bb);
-  g.kings_bb = __builtin_bswap64(g.kings_bb);
-  g.pawns_bb = __builtin_bswap64(g.pawns_bb);
-  g.current_player_bb = __builtin_bswap64(g.current_player_bb);
+  g.rooks_bb = flip_bb(g.rooks_bb);
+  g.knights_bb = flip_bb(g.knights_bb);
+  g.bishops_bb = flip_bb(g.bishops_bb);
+  g.queens_bb = flip_bb(g.queens_bb);
+  g.kings_bb = flip_bb(g.kings_bb);
+  g.pawns_bb = flip_bb(g.pawns_bb);
+  g.current_player_bb = flip_bb(g.current_player_bb);
   if (g.en_passant_sq != POSITION_INVALID) {
     g.en_passant_sq = mkPosition(file(g.en_passant_sq), 7 - rank(g.en_passant_sq));
   }
+  g.castle_flags =
+    (g.castle_flags & CASTLE_WHITE_KINGSIDE << 2) |
+    (g.castle_flags & CASTLE_WHITE_QUEENSIDE << 2) |
+    (g.castle_flags & CASTLE_BLACK_KINGSIDE >> 2) |
+    (g.castle_flags & CASTLE_BLACK_QUEENSIDE >> 2);
   return g;
 }
 
-private gamestate apply_move(gamestate x, move m)
+bool is_kingside_castle(gamestate g, move m)
 {
-  int from_piece = get_piece(x, m.from);
-  int to_piece = get_piece(x, m.to);
+  int from_piece = get_piece(g, m.from);
+  return
+    from_piece == PIECE_KING &&
+    m.to == CASTLE_KINGSIDE_KPOS &&
+    (g.castle_flags & CASTLE_WHITE_KINGSIDE);
+}
+
+bool is_queenside_castle(gamestate g, move m)
+{
+  int from_piece = get_piece(g, m.from);
+  return
+    from_piece == PIECE_KING &&
+    m.to == CASTLE_QUEENSIDE_KPOS &&
+    (g.castle_flags & CASTLE_WHITE_QUEENSIDE);
+}
+
+private gamestate apply_move(gamestate g, move m)
+{
+  int from_piece = get_piece(g, m.from);
+  int to_piece = get_piece(g, m.to);
   if (to_piece != PIECE_EMPTY) {
-    uint64_t to_bb = get_piece_bb(x, to_piece);
-    x = set_piece_bb(x, to_piece, clear_bit(to_bb, m.to));
+    uint64_t to_bb = get_piece_bb(g, to_piece);
+    g = set_piece_bb(g, to_piece, clear_bit(to_bb, m.to));
   }
   // Capture the pawn properly during En Passant capture
-  if (from_piece == PIECE_PAWN && m.to == x.en_passant_sq) {
-    x.pawns_bb = clear_bit(x.pawns_bb, x.en_passant_sq - RANK);
+  if (from_piece == PIECE_PAWN && m.to == g.en_passant_sq) {
+    g.pawns_bb = clear_bit(g.pawns_bb, g.en_passant_sq - RANK);
   }
   // Set En Passant target square on double-jump
   if (from_piece == PIECE_PAWN && rank(m.to) - rank(m.from) == 2) {
-    x.en_passant_sq = m.from + RANK;
+    g.en_passant_sq = m.from + RANK;
   } else {
-    x.en_passant_sq = POSITION_INVALID;
+    g.en_passant_sq = POSITION_INVALID;
   }
-  uint64_t from_bb = get_piece_bb(x, from_piece);
-  x = set_piece_bb(x, from_piece, clear_bit(from_bb, m.from) | bit(m.to));
+  // Check for kingside castle.
+  if (is_kingside_castle(g, m)) {
+    g.castle_flags = clear_bit(g.castle_flags, CASTLE_WHITE_KINGSIDE);
+    g.rooks_bb = clear_bit(g.rooks_bb, mkPosition(7,0));
+    g.current_piece_bb = clear_bit(g.rooks_bb, mkPosition(7,0));
+    g.rooks_bb = set_bit(g.rooks_bb, CASTLE_KINGSIDE_RPOS);
+    g.current_piece_bb = set_bit(g.rooks_bb, CASTLE_KINGSIDE_RPOS);
+  }
+  // Check for queenside castle
+  if (is_queenside_castle(g,m)) {
+    g.castle_flags = clear_bit(g.castle_flags, CASTLE_WHITE_QUEENSIDE);
+    g.rooks_bb = clear_bit(g.rooks_bb, mkPosition(0,0));
+    g.current_piece_bb = clear_bit(g.rooks_bb, mkPosition(0,0));
+    g.rooks_bb = set_bit(g.rooks_bb, CASTLE_QUEENSIDE_RPOS);
+    g.current_piece_bb = set_bit(g.rooks_bb, CASTLE_QUEENSIDE_RPOS);
+  }
+  
+  uint64_t from_bb = get_piece_bb(g, from_piece);
+  g = set_piece_bb(g, from_piece, clear_bit(from_bb, m.from) | bit(m.to));
 
   // Set colors
-  x.current_player_bb = clear_bit(x.current_player_bb, m.from) | bit(m.to);
+  g.current_player_bb = clear_bit(g.current_player_bb, m.from) | bit(m.to);
   
-  return x;
+  return g;
 }
 
 private uint64_t mkRank(int idx) { return ((uint64_t)0xFF << (idx*RANK)); }
@@ -784,7 +873,7 @@ uint64_t vulnerables(gamestate g)
 {
   g = swap_board(g);
   uint64_t ret = movepoints(g) & enemy_pieces(g);
-  ret = __builtin_bswap64(ret);
+  ret = flip_bb(ret);
   return ret;
 }
 
@@ -792,6 +881,27 @@ bool is_in_check(gamestate g)
 {
   uint64_t white_kings = g.kings_bb & g.current_player_bb;
   return ((white_kings & vulnerables(g)) != 0);
+}
+
+bool results_in_check(gamestate g, move m)
+{
+  gamestate g2 = apply_move(g,m);
+  return is_in_check(g2);
+}
+
+bool is_legal(gamestate g, move m)
+{
+  move kingside_castle_part; kingside_castle_part.from = mkPosition(4,0); kingside_castle_part.to = mkPosition(5,0);
+  move queenside_castle_part; queenside_castle_part.from = mkPosition(4,0); queenside_castle_part.to = mkPosition(3,0);
+  
+  return
+    ! results_in_check(g, m) &&
+    (! is_kingside_castle(g,m) ||
+     (! results_in_check(g, kingside_castle_part) &&
+      ! is_in_check(g))) &&
+    (! is_queenside_castle(g,m) ||
+     (! results_in_check(g, queenside_castle_part) &&
+      ! is_in_check(g)));
 }
 
 // Like advance_iterator, but skip moves that leave the king in check
@@ -803,8 +913,7 @@ private iterator advance_iterator_legal(gamestate g, iterator i)
       break;
     }
     move m = dereference_iterator(i);
-    gamestate g2 = apply_move(g, m);
-    if (! is_in_check(g2)) {
+    if (is_legal(g, m)) {
       break;
     }
   }
@@ -815,8 +924,7 @@ private iterator mkLegalIterator(gamestate g)
 {
   iterator i = mkIterator(g);
   move m = dereference_iterator(i);
-  gamestate g2 = apply_move(g, m);
-  if (is_in_check(g2)) {
+  if (! is_legal(g, m)) {
     i = advance_iterator_legal(g, i);
   }
   return i;
@@ -844,3 +952,32 @@ private int num_legal_moves(gamestate g)
   }
   return count;
 }
+
+private iterator legalize(gamestate g, iterator i)
+{
+  while (! is_iterator_finished(i)) {
+    move m = dereference_iterator(i);
+    if (is_legal(g, m)) {
+      break;
+    }
+    i = advance_iterator(g, i);
+  }
+  return i;
+}
+
+private uint64_t piece_legal_movepoints(gamestate g, int idx)
+{
+  iterator i = zerostate();
+  int piece = get_piece(g, idx);
+  i = set_piece_bb(i, piece, bit(idx));
+  i = reset_iterator_moves(g, i);
+  i = legalize(g, i);
+  uint64_t ret = 0;
+  while (! is_iterator_finished(i)) {
+    move m = dereference_iterator(i);
+    ret |= bit(m.to);
+    i = advance_iterator_legal(g, i);
+  }
+  return ret;
+}
+

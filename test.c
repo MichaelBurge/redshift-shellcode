@@ -89,9 +89,9 @@ void walk_game_tree(gamestate init, int depth, ft_action f)
   }
 }
 
-void print_gamestate_action(gamestate g, move m, int d) { print_gamestate(g); }
+void print_gamestate_action(gamestate g, move m, int d) { print_move(m); putchar('\n');}
 
-void print_moves(gamestate g, move m)
+void print_moves(gamestate g)
 {
   walk_game_tree(g, 1, print_gamestate_action);
 }
@@ -126,51 +126,199 @@ void assert(const char* message, bool x)
 
 void test_ray()
 {
-  uint64_t center = mkPosition(3,3);
-  uint64_t nw_ray =
-    bit(mkPosition(0,6)) |
-    bit(mkPosition(1,5)) |
-    bit(mkPosition(2,4));
-  uint64_t n_ray =
-    bit(mkPosition(3,4)) |
-    bit(mkPosition(3,5)) |
-    bit(mkPosition(3,6)) |
-    bit(mkPosition(3,7));
-  uint64_t ne_ray =
-    bit(mkPosition(4,4)) |
-    bit(mkPosition(5,5)) |
-    bit(mkPosition(6,6)) |
-    bit(mkPosition(7,7));
-  uint64_t e_ray =
-    bit(mkPosition(4,3)) |
-    bit(mkPosition(5,3)) |
-    bit(mkPosition(6,3)) |
-    bit(mkPosition(7,3));
-  uint64_t se_ray =
-    bit(mkPosition(4,2)) |
-    bit(mkPosition(5,1)) |
-    bit(mkPosition(6,0));
-  uint64_t s_ray =
-    bit(mkPosition(3,2)) |
-    bit(mkPosition(3,1)) |
-    bit(mkPosition(3,0));
-  uint64_t sw_ray =
-    bit(mkPosition(2,2)) |
-    bit(mkPosition(1,1)) |
-    bit(mkPosition(0,0));
-  uint64_t w_ray =
-    bit(mkPosition(2,3)) |
-    bit(mkPosition(1,3))|
-    bit(mkPosition(0,3));
+  // Base rays
+  {
+    uint64_t center = mkPosition(3,3);
+    uint64_t nw_ray =
+      bit(mkPosition(0,6)) |
+      bit(mkPosition(1,5)) |
+      bit(mkPosition(2,4));
+    uint64_t n_ray =
+      bit(mkPosition(3,4)) |
+      bit(mkPosition(3,5)) |
+      bit(mkPosition(3,6)) |
+      bit(mkPosition(3,7));
+    uint64_t ne_ray =
+      bit(mkPosition(4,4)) |
+      bit(mkPosition(5,5)) |
+      bit(mkPosition(6,6)) |
+      bit(mkPosition(7,7));
+    uint64_t e_ray =
+      bit(mkPosition(4,3)) |
+      bit(mkPosition(5,3)) |
+      bit(mkPosition(6,3)) |
+      bit(mkPosition(7,3));
+    uint64_t se_ray =
+      bit(mkPosition(4,2)) |
+      bit(mkPosition(5,1)) |
+      bit(mkPosition(6,0));
+    uint64_t s_ray =
+      bit(mkPosition(3,2)) |
+      bit(mkPosition(3,1)) |
+      bit(mkPosition(3,0));
+    uint64_t sw_ray =
+      bit(mkPosition(2,2)) |
+      bit(mkPosition(1,1)) |
+      bit(mkPosition(0,0));
+    uint64_t w_ray =
+      bit(mkPosition(2,3)) |
+      bit(mkPosition(1,3))|
+      bit(mkPosition(0,3));
 
-  assert_equal_bb("nw", nw_ray, mkRay(center, DIRECTION_NORTHWEST));
-  assert_equal_bb("n",  n_ray,  mkRay(center, DIRECTION_NORTH));
-  assert_equal_bb("ne", ne_ray, mkRay(center, DIRECTION_NORTHEAST));
-  assert_equal_bb("e",  e_ray,  mkRay(center, DIRECTION_EAST));
-  assert_equal_bb("se", se_ray, mkRay(center, DIRECTION_SOUTHEAST));
-  assert_equal_bb("s",  s_ray,  mkRay(center, DIRECTION_SOUTH));
-  assert_equal_bb("sw", sw_ray, mkRay(center, DIRECTION_SOUTHWEST));
-  assert_equal_bb("w",  w_ray,  mkRay(center, DIRECTION_WEST));
+    assert_equal_bb("nw", nw_ray, mkRay(center, DIRECTION_NORTHWEST));
+    assert_equal_bb("n",  n_ray,  mkRay(center, DIRECTION_NORTH));
+    assert_equal_bb("ne", ne_ray, mkRay(center, DIRECTION_NORTHEAST));
+    assert_equal_bb("e",  e_ray,  mkRay(center, DIRECTION_EAST));
+    assert_equal_bb("se", se_ray, mkRay(center, DIRECTION_SOUTHEAST));
+    assert_equal_bb("s",  s_ray,  mkRay(center, DIRECTION_SOUTH));
+    assert_equal_bb("sw", sw_ray, mkRay(center, DIRECTION_SOUTHWEST));
+    assert_equal_bb("w",  w_ray,  mkRay(center, DIRECTION_WEST));
+  }
+  // Rays with blockers
+  {
+    uint64_t center = mkPosition(3,3);
+    // W
+    {
+      gamestate g = zerostate();
+      g.pawns_bb =
+        bit(mkPosition(1,3)) |
+        bit(mkPosition(0,3));
+      uint64_t expected =
+        bit(mkPosition(2,3)) |
+        bit(mkPosition(1,3));
+      /* printf("== expected:\n"); print_bitboard(expected); printf("\n"); */
+      uint64_t actual = shoot_ray_until_blocker(g, center, DIRECTION_WEST);
+      /* printf("== actual:\n"); print_bitboard(actual); printf("\n"); */
+      /* uint64_t base_ray = mkRay(center, DIRECTION_WEST); */
+      /* printf("== base_ray:\n"); print_bitboard(base_ray); printf("\n"); */
+      /* uint64_t blockers = base_ray & all_pieces(g); */
+      /* printf("== blockers:\n"); print_bitboard(blockers); printf("\n"); */
+      /* int blocker = closest_blocker(blockers, DIRECTION_WEST); */
+      /* printf("== blocker: "); print_pos(blocker); printf("\n"); */
+      /* uint64_t blocker_ray = mkRay(blocker, DIRECTION_WEST); */
+      /* printf("== blocker_ray:\n"); print_bitboard(blocker_ray); */
+      /* uint64_t movable_squares_without_capture = base_ray ^ blocker_ray ^ bit(blocker); */
+      /* printf("== movable_squares_without_capture\n"); print_bitboard(movable_squares_without_capture); printf("\n"); */
+
+      assert_equal_int("w_blocker", mkPosition(1,3), closest_blocker(g.pawns_bb, DIRECTION_WEST));
+      assert_equal_bb("w", expected, actual);
+    }
+    // NW
+    {
+      gamestate g = zerostate();
+      g.pawns_bb =
+        bit(mkPosition(1,5)) |
+        bit(mkPosition(0,6));
+      uint64_t expected =
+        bit(mkPosition(2,4)) |
+        bit(mkPosition(1,5));
+      uint64_t actual = shoot_ray_until_blocker(g, center, DIRECTION_NORTHWEST);
+      assert_equal_int("nw_blocker", mkPosition(1,5), closest_blocker(g.pawns_bb, DIRECTION_NORTHWEST));
+      assert_equal_bb("nw", expected, actual);
+    }
+    // N
+    {
+      gamestate g = zerostate();
+      g.pawns_bb =
+        bit(mkPosition(3,6)) |
+        bit(mkPosition(3,7));
+      uint64_t expected =
+        bit(mkPosition(3,4)) |
+        bit(mkPosition(3,5)) |
+        bit(mkPosition(3,6));
+      uint64_t actual = shoot_ray_until_blocker(g, center, DIRECTION_NORTH);
+      assert_equal_int("n_blocker", mkPosition(3,6), closest_blocker(g.pawns_bb, DIRECTION_NORTH));
+      assert_equal_bb("n", expected, actual);
+    }
+    // NE
+    {
+      gamestate g = zerostate();
+      g.pawns_bb =
+        bit(mkPosition(6,6)) |
+        bit(mkPosition(7,7));
+      uint64_t expected =
+        bit(mkPosition(4,4)) |
+        bit(mkPosition(5,5)) |
+        bit(mkPosition(6,6));
+      uint64_t actual = shoot_ray_until_blocker(g, center, DIRECTION_NORTHEAST);
+      assert_equal_int("ne_blocker", mkPosition(6,6), closest_blocker(g.pawns_bb, DIRECTION_NORTHEAST));
+      assert_equal_bb("ne", expected, actual);
+    }
+    // NE 2
+    {
+      uint64_t center = mkPosition(0,2);
+      gamestate g = zerostate();
+      g.pawns_bb =
+        bit(mkPosition(4,6)) |
+        bit(mkPosition(5,7));
+      uint64_t expected =
+        bit(mkPosition(1,3)) |
+        bit(mkPosition(2,4)) |
+        bit(mkPosition(3,5)) |
+        bit(mkPosition(4,6));
+      uint64_t actual = shoot_ray_until_blocker(g, center, DIRECTION_NORTHEAST);
+      assert_equal_bb("ne_2", expected, actual);
+    }
+    // NE 3
+    {
+      uint64_t bb = bit(mkPosition(4,6)) | bit(mkPosition(5,7));
+      int i = closest_blocker(bb, DIRECTION_NORTHEAST);
+      assert_equal_int("ne_3", mkPosition(4,6), i);
+    }
+    // E
+    {
+      gamestate g = zerostate();
+      g.pawns_bb =
+        bit(mkPosition(6,3)) |
+        bit(mkPosition(7,3));
+      uint64_t expected =
+        bit(mkPosition(4,3)) |
+        bit(mkPosition(5,3)) |
+        bit(mkPosition(6,3)); 
+      uint64_t actual = shoot_ray_until_blocker(g, center, DIRECTION_EAST);
+      assert_equal_int("e_blocker", mkPosition(6,3), closest_blocker(g.pawns_bb, DIRECTION_EAST));
+      assert_equal_bb("e", expected, actual);
+    }
+    // SE
+    {
+      gamestate g = zerostate();
+      g.pawns_bb =
+        bit(mkPosition(5,1)) |
+        bit(mkPosition(6,0));
+      uint64_t expected =
+        bit(mkPosition(4,2)) |
+        bit(mkPosition(5,1));
+      uint64_t actual = shoot_ray_until_blocker(g, center, DIRECTION_SOUTHEAST);
+      assert_equal_int("se_blocker", mkPosition(5,1), closest_blocker(g.pawns_bb, DIRECTION_SOUTHEAST));
+      assert_equal_bb("se", expected, actual);
+    }
+    // S
+    {
+      gamestate g = zerostate();
+      g.pawns_bb =
+        bit(mkPosition(3,1)) |
+        bit(mkPosition(3,0));
+      uint64_t expected =
+        bit(mkPosition(3,2)) |
+        bit(mkPosition(3,1));
+      uint64_t actual = shoot_ray_until_blocker(g, center, DIRECTION_SOUTH);
+      assert_equal_int("s_blocker", mkPosition(3,1), closest_blocker(g.pawns_bb, DIRECTION_SOUTH));
+      assert_equal_bb("s", expected, actual);
+    }
+    // SW
+    {
+      gamestate g = zerostate();
+      g.pawns_bb =
+        bit(mkPosition(1,1)) |
+        bit(mkPosition(0,0));
+      uint64_t expected =
+        bit(mkPosition(2,2)) |
+        bit(mkPosition(1,1));
+      uint64_t actual = shoot_ray_until_blocker(g, center, DIRECTION_SOUTHWEST);
+      assert_equal_int("sw_blocker", mkPosition(1,1), closest_blocker(g.pawns_bb, DIRECTION_SOUTHWEST));
+      assert_equal_bb("sw", expected, actual);
+    }
+  }
 }
 
 void test_rook()
@@ -458,6 +606,53 @@ void test_king()
   }
 }
 
+void test_bishop()
+{
+  // Bishop southwest blocker
+  {
+    gamestate g = zerostate();
+    g.pawns_bb = bit(mkPosition(3,1));
+    g.kings_bb = bit(mkPosition(2,0));
+    g.current_piece_bb = bit(mkPosition(7,5));
+    g.bishops_bb = bit(mkPosition(7,5));
+
+    {
+      uint64_t expected =
+        bit(mkPosition(6,6)) |
+        bit(mkPosition(5,7)) |
+        bit(mkPosition(6,4)) |
+        bit(mkPosition(5,3)) |
+        bit(mkPosition(4,2)) |
+        bit(mkPosition(3,1));
+      uint64_t actual = valid_bishop_moves(g, mkPosition(7,5));
+      assert_equal_bb("test_bishop_1", expected, actual);
+    }
+    // King not in check from bishop
+    g.current_piece_bb ^= all_pieces(g);
+    assert("test_bishop_1_check", ! is_in_check(g));
+  }
+  // Bishop northeast blocker
+  {
+    gamestate g = zerostate();
+    g.pawns_bb = bit(mkPosition(3,1));
+    g.kings_bb = bit(mkPosition(2,0));
+    g.current_piece_bb = all_pieces(g);
+    g.bishops_bb = bit(mkPosition(7,5));
+    {
+      uint64_t expected =
+        bit(mkPosition(6,6)) |
+        bit(mkPosition(5,7)) |
+        bit(mkPosition(6,4)) |
+        bit(mkPosition(5,3)) |
+        bit(mkPosition(4,2));
+      uint64_t actual = valid_bishop_moves(g, mkPosition(7,5));
+      assert_equal_bb("test_bishop_2", expected, actual);
+    }
+    // King not in check from bishop
+    assert("test_bishop_2_check", ! is_in_check(g));
+  } 
+}
+
 void test_apply_move()
 {
   // Knight in middle
@@ -529,9 +724,207 @@ void test_check()
       bit(mkPosition(2,0));
     //bit(mkPosition(0,2));
     g.current_player_bb = g.kings_bb;
-    printf("== rooks\n"); print_bitboard(g.rooks_bb);
-    printf("== legal_movepoints\n"); print_bitboard(legal_movepoints(g));
-    assert_equal_int("test_check_2", 1, num_legal_moves(g));
+    assert_equal_int("test_check_3", 1, num_legal_moves(g));
+  }
+  // King can safely move to a square protected by own unit.
+  {
+    gamestate g = zerostate();
+    g.pawns_bb =
+      bit(mkPosition(3,1)) |
+      bit(mkPosition(4,0)) |
+      bit(mkPosition(4,1)) |
+      bit(mkPosition(2,1));
+    g.kings_bb = bit(mkPosition(3,0));
+    g.bishops_bb =
+      bit(mkPosition(0,2)) |
+      bit(mkPosition(0,5));
+    g.knights_bb =
+      bit(mkPosition(1,0)) |
+      bit(mkPosition(6,0));
+    g.current_piece_bb = all_pieces(g);
+    g.bishops_bb |= bit(mkPosition(7,5));
+    {
+      uint64_t expected =
+        bit(mkPosition(6,6)) |
+        bit(mkPosition(5,7)) |
+        bit(mkPosition(6,4)) |
+        bit(mkPosition(5,3)) |
+        bit(mkPosition(4,2));
+      uint64_t actual = valid_bishop_moves(g, mkPosition(7,5));
+      assert_equal_bb("test_check_4_bishop", expected, actual);
+    }
+    // King not in check from bishop
+    assert("test_check_4_check", ! is_in_check(g));
+    {
+      int from = mkPosition(3,0);
+      int target = mkPosition(2,0);
+      uint64_t expected = bit(target);
+      uint64_t actual = piece_legal_movepoints(g, from);
+      assert_equal_bb("test_check_4_king_valid", bit(target), valid_king_moves(g, from));
+      iterator i = zerostate();
+      int piece = get_piece(g, from);
+      i = set_piece_bb(i, piece, bit(from));
+      i = reset_iterator_moves(g,i);
+      i = legalize(g,i);
+
+      assert_equal_bb("test_check_4_next", bit(target), i.current_piece_bb);
+      assert_equal_bb("test_check_4_moves", expected, actual);
+    }
+  }
+}
+
+void test_castling()
+{
+  // Kingside castle 1
+  {
+    gamestate g = zerostate();
+    g.kings_bb = bit(mkPosition(4,0));
+    g.rooks_bb = bit(mkPosition(7,0));
+    g.castle_flags = CASTLE_WHITE_KINGSIDE;
+    g.current_player_bb = all_pieces(g);
+
+    uint64_t expected =
+      bit(mkPosition(3,0)) |
+      bit(mkPosition(3,1)) |
+      bit(mkPosition(4,1)) |
+      bit(mkPosition(5,1)) |
+      bit(mkPosition(5,0)) |
+      bit(mkPosition(6,0));
+    uint64_t actual = valid_king_moves(g, mkPosition(4,0));
+    assert_equal_bb("test_castling_1_moves", expected, actual);
+    move m; m.from = mkPosition(4,0); m.to = CASTLE_KINGSIDE_KPOS;
+    gamestate g2 = apply_move(g, m);
+    assert_equal_bb("test_castling_1_king", bit(CASTLE_KINGSIDE_KPOS), g2.kings_bb);
+    assert_equal_bb("test_castling_1_rook", bit(CASTLE_KINGSIDE_RPOS), g2.rooks_bb);
+  }
+  // Queenside castle 1
+  {
+    gamestate g = zerostate();
+    g.kings_bb = bit(mkPosition(4,0));
+    g.rooks_bb = bit(mkPosition(0,0));
+    g.castle_flags = CASTLE_WHITE_QUEENSIDE;
+    g.current_player_bb = all_pieces(g);
+
+    uint64_t expected =
+      bit(mkPosition(3,0)) |
+      bit(mkPosition(3,1)) |
+      bit(mkPosition(4,1)) |
+      bit(mkPosition(5,1)) |
+      bit(mkPosition(5,0)) |
+      bit(mkPosition(2,0));
+    uint64_t actual = valid_king_moves(g, mkPosition(4,0));
+    assert_equal_bb("test_castling_2_moves", expected, actual);
+    move m; m.from = mkPosition(4,0); m.to = mkPosition(2,0);
+    gamestate g2 = apply_move(g, m);
+    assert_equal_bb("test_castling_2_king", bit(mkPosition(2,0)), g2.kings_bb);
+    assert_equal_bb("test_castling_2_rook", bit(mkPosition(3,0)), g2.rooks_bb);
+  }
+  // Kingside castle blocked by check 1
+  {
+    gamestate g = zerostate();
+    g.kings_bb = bit(mkPosition(4,0));
+    g.rooks_bb = bit(mkPosition(7,0));
+    g.castle_flags = CASTLE_WHITE_KINGSIDE;
+    g.current_player_bb = all_pieces(g);
+    g.rooks_bb |= bit(mkPosition(5,7));
+
+    uint64_t expected =
+      bit(mkPosition(3,0)) |
+      bit(mkPosition(3,1)) |
+      bit(mkPosition(4,1));
+    uint64_t actual = piece_legal_movepoints(g, mkPosition(4,0));
+    move not_castle; not_castle.from = mkPosition(4,0); not_castle.to = mkPosition(4,1);
+    move castle_kingside; castle_kingside.from = mkPosition(4,0); castle_kingside.to = mkPosition(6,0);
+    assert("test_castling_3_not_kingside_1", ! is_kingside_castle(g, not_castle));
+    assert("test_castling_3_not_kingside_2", ! is_queenside_castle(g, not_castle));
+    assert("test_castling_3_not_kingside_3", ! results_in_check(g, not_castle));
+    assert("test_castling_3_not_kingside_4", is_legal(g, not_castle));
+    assert("test_castling_3_illegal", ! is_legal(g, castle_kingside));
+    assert_equal_bb("test_castling_3_moves", expected, actual);
+  }
+  // Queenside castle blocked by check 1
+  {
+    gamestate g = zerostate();
+    g.kings_bb = bit(mkPosition(4,0));
+    g.rooks_bb = bit(mkPosition(0,0));
+    g.castle_flags = CASTLE_WHITE_QUEENSIDE;
+    g.current_player_bb = all_pieces(g);
+    g.rooks_bb |= bit(mkPosition(3,7));
+
+    uint64_t expected =
+      bit(mkPosition(4,1)) |
+      bit(mkPosition(5,1)) |
+      bit(mkPosition(5,0));
+    uint64_t actual = piece_legal_movepoints(g, mkPosition(4,0));
+    assert_equal_bb("test_castling_4_moves", expected, actual);
+  }
+  // Kingside castle blocked by check 2
+  {
+    gamestate g = zerostate();
+    g.kings_bb = bit(mkPosition(4,0));
+    g.rooks_bb = bit(mkPosition(7,0));
+    g.castle_flags = CASTLE_WHITE_KINGSIDE;
+    g.current_player_bb = all_pieces(g);
+    g.rooks_bb |= bit(mkPosition(4,7));
+
+    uint64_t expected =
+      bit(mkPosition(3,0)) |
+      bit(mkPosition(3,1)) |
+      bit(mkPosition(5,1)) |
+      bit(mkPosition(5,0));
+    uint64_t actual = piece_legal_movepoints(g, mkPosition(4,0));
+    assert_equal_bb("test_castling_5_moves", expected, actual);
+  }
+  // Queenside castle blocked by check 2
+  {
+    gamestate g = zerostate();
+    g.kings_bb = bit(mkPosition(4,0));
+    g.rooks_bb = bit(mkPosition(0,0));
+    g.castle_flags = CASTLE_WHITE_QUEENSIDE;
+    g.current_player_bb = all_pieces(g);
+    g.rooks_bb |= bit(mkPosition(4,7));
+
+    uint64_t expected =
+      bit(mkPosition(3,0)) |
+      bit(mkPosition(3,1)) |
+      bit(mkPosition(5,1)) |
+      bit(mkPosition(5,0));
+    uint64_t actual = piece_legal_movepoints(g, mkPosition(4,0));
+    assert_equal_bb("test_castling_6_moves", expected, actual);
+  }
+  // Kingside castle blocked by unit
+  {
+    gamestate g = zerostate();
+    g.kings_bb = bit(mkPosition(4,0));
+    g.rooks_bb = bit(mkPosition(7,0));
+    g.bishops_bb |= bit(mkPosition(5,0));
+    g.castle_flags = CASTLE_WHITE_KINGSIDE;
+    g.current_player_bb = all_pieces(g);
+
+    uint64_t expected =
+      bit(mkPosition(3,0)) |
+      bit(mkPosition(3,1)) |
+      bit(mkPosition(4,1)) |
+      bit(mkPosition(5,1));
+    uint64_t actual = valid_king_moves(g, mkPosition(4,0));
+    assert_equal_bb("test_castling_7_moves", expected, actual);
+  }
+  // Queenside castle blocked by unit
+  {
+    gamestate g = zerostate();
+    g.kings_bb = bit(mkPosition(4,0));
+    g.rooks_bb = bit(mkPosition(0,0));
+    g.bishops_bb = bit(mkPosition(3,0));
+    g.castle_flags = CASTLE_WHITE_QUEENSIDE;
+    g.current_player_bb = all_pieces(g);
+
+    uint64_t expected =
+      bit(mkPosition(3,1)) |
+      bit(mkPosition(4,1)) |
+      bit(mkPosition(5,1)) |
+      bit(mkPosition(5,0));
+    uint64_t actual = valid_king_moves(g, mkPosition(4,0));
+    assert_equal_bb("test_castling_8_moves", expected, actual);
   }
 }
 
@@ -588,13 +981,27 @@ void print_fen(gamestate g)
       putchar('/');
   }
   printf(" w ");
+  // Castle Flags
+  {
+    if (g.castle_flags & CASTLE_WHITE_KINGSIDE)
+      putchar('K');
+    if (g.castle_flags & CASTLE_WHITE_QUEENSIDE)
+      putchar('Q');
+    if (g.castle_flags & CASTLE_BLACK_KINGSIDE)
+      putchar('k');
+    if (g.castle_flags & CASTLE_BLACK_QUEENSIDE)
+      putchar('q');
+    if (! g.castle_flags)
+      putchar('-');
+  }
+  putchar(' ');
   if (g.en_passant_sq == POSITION_INVALID) {
     putchar('-');
   } else {
     //printf("%d---", g.en_passant_sq);
     print_pos(g.en_passant_sq);
   }
-  printf(" KQkq 0 1\n");
+  printf(" 0 1\n");
 }
 
 int main() {
@@ -603,49 +1010,54 @@ int main() {
   test_pawn();
   test_knight();
   test_king();
+  test_bishop();
   test_iterator();
   test_apply_move();
   test_check();
+  test_castling();
   /* gamestate g = new_game(); */
   /* iterator i = mkIterator(g); */
   
   /* print_bitboard(i.current_piece_bb); */
 
   gamestate g = new_game();
-  /* // 1: G2G4 */
-  move m1; m1.from = mkPosition(6,1); m1.to = mkPosition(6,3);
-  g = swap_board(apply_move(g, m1));
-  /* // 2: H2H3 */
-  move m2; m2.from = mkPosition(7,1); m2.to = mkPosition(7,3);
-  g = swap_board(apply_move(g, m2));
-  /* // 3: G4H5 */
-  move m3; m3.from = mkPosition(6,3); m3.to = mkPosition(7,4);
-  g = swap_board(apply_move(g, m3));
-  /* // 4: D2D3 */
-  move m4; m4.from = mkPosition(3,1); m4.to = mkPosition(3,2);
-  g = swap_board(apply_move(g, m4));
-  /* // 5: F1H3 */
-  move m5; m5.from = mkPosition(5,0); m5.to = mkPosition(7,2);
-  g = swap_board(apply_move(g, m5));
-  /* move m2; m2.from = mkPosition(1,1); m2.to = mkPosition(1,3); */
+  // 1: b1a3
+  move m1; m1.from = mkPosition(1,0); m1.to = mkPosition(0,3);
+  /* g = swap_board(apply_move(g, m1)); */
+  /* // 2: b2b3 */
+  /* move m2; m2.from = mkPosition(1,1); m2.to = mkPosition(1,2); */
+  /* g = swap_board(apply_move(g, m2)); */
+  /* // 3: a1b1 */
+  /* move m3; m3.from = mkPosition(0,0); m3.to = mkPosition(1,0); */
+  /* g = swap_board(apply_move(g, m3)); */
+  /* // 4: c1a3 */
+  /* move m4; m4.from = mkPosition(2,0); m4.to = mkPosition(0,2); */
+  /* g = swap_board(apply_move(g, m4)); */
+  /* // 5: a2a3 */
+  /* move m5; m5.from = mkPosition(0,1); m5.to = mkPosition(0,2); */
+  /* g = swap_board(apply_move(g, m4)); */
 
+  // NOTE: D1C1 as m6 is in roce, but not the redshift shellcode.
+  
   /* g = swap_board(apply_move(g, m2)); */
   /* move m3; m3.from = mkPosition(0,3); m3.to = mkPosition(0,4); */
   /* g = swap_board(apply_move(g, m3)); */
   /* g = apply_move(g, m3); */
-  perft_divide(g,0);
-  print_fen(g);
+  /* perft_divide(g,3); */
+  /* print_fen(g); */
   /* // 1: B1A3 */
 
   /* g = swap_board(apply_move(g, m1)); */
   /* /\* // 2: B1A3 *\/ */
   /* g = swap_board(apply_move(g, m1)); */
-  /* print_fen(g); */
+  print_fen(g);
   /* /\* print_gamestate(g); *\/ */
-  /* perft_divide(g, 5); */
+  perft_divide(g, 0);;
   /* print_gamestate(g); */
   /* printf("== rooks\n"); print_bitboard(g.rooks_bb); */
   /* printf("== pawns\n"); print_bitboard(g.pawns_bb); */
+
+  /* print_moves(g); */
   
   printf("Perft(0): %d\n", perft(0));
   printf("Perft(1): %d\n", perft(1));
@@ -653,5 +1065,5 @@ int main() {
   printf("Perft(3): %d\n", perft(3));
   printf("Perft(4): %d\n", perft(4));
   printf("Perft(5): %d\n", perft(5));
-  printf("Perft(6): %d\n", perft(6));
+  printf("Perft(6): %d\n", perft(6)); 
 }
