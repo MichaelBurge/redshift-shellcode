@@ -3,7 +3,7 @@
 #ifdef DEBUG
 #define abort() __builtin_trap();
 //#define abort() throw "derp";
-#define private static
+#define private static __attribute__((always_inline)) inline
 #else
 #define private static __attribute__((always_inline)) inline
 #define abort() __builtin_unreachable();
@@ -43,6 +43,15 @@ const int PIECE_QUEEN  = 4;
 const int PIECE_KING   = 5;
 const int PIECE_PAWN   = 6;
 
+const int VALUE_PAWN   = 100;
+const int VALUE_KNIGHT = 300;
+const int VALUE_BISHOP = 300;
+const int VALUE_ROOK   = 500;
+const int VALUE_QUEEN  = 900;
+const int VALUE_AVAILABLE_MOVE = 5;
+const int VALUE_CHECKMATE = -1000000; 
+const int VALUE_NEGAMAX_START = 0x8F000000;
+const int VALUE_CENTER = 10;
 
 const int DIRECTION_EAST  = 0;
 const int DIRECTION_WEST  = 1;
@@ -72,13 +81,6 @@ const int POSITION_INVALID = 255;
 
 const uint64_t RAY_A1A8 = 0x0101010101010101;
 const uint64_t RAY_H1H8 = RAY_A1A8 << (RANK-1);
-
-// Public functions
-
-uint64_t best_move(uint64_t rooks_bb, uint64_t knights_bb, uint64_t bishops_bb, uint64_t queens_bb, uint64_t kings_bb, uint64_t pawns_bb, uint64_t colors_bb)
-{
-  return 0;
-}
 
 // Private functions
 
@@ -937,7 +939,7 @@ private bool iter_lt(iterator x, iterator y)
                   (x.promotion_piece < y.promotion_piece)))))))))))))));
 }
 
-uint64_t movepoints(gamestate g)
+private uint64_t movepoints(gamestate g)
 {
   uint64_t movepoints = 0;
   iterator i = mkIterator(g);
@@ -949,7 +951,7 @@ uint64_t movepoints(gamestate g)
   return movepoints;
 }
 
-uint64_t vulnerables(gamestate g)
+private uint64_t vulnerables(gamestate g)
 {
   g = swap_board(g);
   uint64_t ret = movepoints(g) & enemy_pieces(g);
@@ -957,19 +959,19 @@ uint64_t vulnerables(gamestate g)
   return ret;
 }
 
-bool is_in_check(gamestate g)
+private bool is_in_check(gamestate g)
 {
   uint64_t white_kings = g.kings_bb & g.current_player_bb;
   return ((white_kings & vulnerables(g)) != 0);
 }
 
-bool results_in_check(gamestate g, move m)
+private bool results_in_check(gamestate g, move m)
 {
   gamestate g2 = apply_move(g,m);
   return is_in_check(g2);
 }
 
-bool is_legal(gamestate g, move m)
+private bool is_legal(gamestate g, move m)
 {
   if (results_in_check(g,m)) {
     return false;
@@ -1077,4 +1079,262 @@ private move mkPromotion(gamestate g, int from, int piece)
   m.to = from + RANK;
   m.to |= piece << 6;
   return m;
+}
+
+// Public functions
+
+private int num_bits(uint64_t x) { return __builtin_popcountl(x); }
+
+private int score_pieces(gamestate g)
+{
+  return
+    num_bits(g.pawns_bb & g.current_player_bb) * VALUE_PAWN +
+    num_bits(g.knights_bb & g.current_player_bb) * VALUE_KNIGHT +
+    num_bits(g.bishops_bb & g.current_player_bb) * VALUE_BISHOP +
+    num_bits(g.rooks_bb & g.current_player_bb) * VALUE_ROOK +
+    num_bits(g.queens_bb & g.current_player_bb) * VALUE_QUEEN;
+}
+
+private int score_availability(gamestate g)
+{
+  int num_moves = num_legal_moves(g);
+  if (num_moves == 0)
+    return VALUE_CHECKMATE;
+  return VALUE_AVAILABLE_MOVE * num_moves;
+}
+
+private uint64_t center()
+{
+  return
+    bit(mkPosition(2,2)) |
+    bit(mkPosition(2,3)) |
+    bit(mkPosition(2,4)) |
+    bit(mkPosition(2,5)) |
+    
+    bit(mkPosition(3,2)) |
+    bit(mkPosition(3,3)) |
+    bit(mkPosition(3,4)) |
+    bit(mkPosition(3,5)) |
+    
+    bit(mkPosition(4,2)) |
+    bit(mkPosition(4,3)) |
+    bit(mkPosition(4,4)) |
+    bit(mkPosition(4,5)) |
+    
+    bit(mkPosition(5,2)) |
+    bit(mkPosition(5,3)) |
+    bit(mkPosition(5,4)) |
+    bit(mkPosition(5,5));    
+}
+
+private int score_center(gamestate g)
+{
+  int num_centers = num_bits(g.current_player_bb & center());
+  return num_centers * VALUE_CENTER;
+}
+
+private int evaluate(gamestate g)
+{
+  return score_pieces(g) + score_availability(g);
+}
+
+
+typedef struct negamax_ret {
+  move m;
+  int score;
+} negamax_ret;
+
+template<int depth> private int negamax(gamestate g, int color);
+
+template<> int negamax<0>(gamestate g, int color)
+{
+  return color * evaluate(g);
+}
+
+template<int depth> int negamax(gamestate g, int color)
+{
+  if (depth == 0)
+    return color*evaluate(g);
+  int max = VALUE_NEGAMAX_START;
+  for (iterator i = mkLegalIterator(g); ! is_iterator_finished(i); i = advance_iterator_legal(g, i))  {
+    move m = dereference_iterator(i);
+    gamestate g2 = apply_move(g, m);
+    int score = -negamax<depth-1>(g2, color*-1);
+    if (score > max)
+      max = score;
+  }
+  return max;
+}
+
+move best_move(gamestate g)
+{
+  int max = VALUE_NEGAMAX_START;
+  move ret; ret.from = POSITION_INVALID; ret.to = POSITION_INVALID;
+  for (iterator i = mkLegalIterator(g); ! is_iterator_finished(i); i = advance_iterator_legal(g, i)) {
+    move m = dereference_iterator(i);
+    gamestate g2 = apply_move(g, m);
+    int score = negamax<3>(g, 1);
+    if (score > max) {
+      max = score;
+      ret = m;
+    }
+  }
+  return ret;
+}
+
+private int negamax_original(gamestate g1)
+{
+  // depth 1
+  int max1 = VALUE_NEGAMAX_START;
+  for (iterator i1 = mkLegalIterator(g1); ! is_iterator_finished(i1); i1 = advance_iterator_legal(g1, i1)) {
+    move m1 = dereference_iterator(i1);
+    gamestate g2 = apply_move(g1, m1);
+    // depth 2
+    int max2 = VALUE_NEGAMAX_START;
+    for (iterator i2 = mkLegalIterator(g2); ! is_iterator_finished(i2); i2 = advance_iterator_legal(g2, i2)) {
+      move m2 = dereference_iterator(i2);
+      gamestate g3 = apply_move(g2, m2);
+      // depth 3
+      int max3 = VALUE_NEGAMAX_START;
+      for (iterator i3 = mkLegalIterator(g3); ! is_iterator_finished(i3); i3 = advance_iterator_legal(g3, i3)) {
+        move m3 = dereference_iterator(i3);
+        gamestate g4 = apply_move(g3, m3);
+        // depth 4
+        int score = evaluate(g4);
+        score = -score;
+        if (score > max3) {
+          max3 = score;
+        }
+      }
+      max3 = -max3;
+      if (max3 > max2) {
+        max2 = max2;
+      }
+    }
+    max2 = -max2;
+    if (max2 > max1) {
+      max1 = max2;
+    }
+  }
+  return max1;
+}
+typedef int continuation;
+private negamax_ret negamax(gamestate g1)
+{
+  // Arguments shared between all trampolines
+  continuation tr_cont;
+  gamestate tr_g;
+  gamestate g2;
+  gamestate g3;
+  gamestate g4;
+  move tr_m;
+  iterator tr_i;
+  iterator i1;
+  iterator i2;
+  iterator i3;
+  int max1;
+  int max2;
+  int max3;
+  int score;
+  
+  move best_move;
+  move m1;
+  move m2;
+  move m3;
+  goto begin_loop;
+  // Trampoline return destinations
+#define DEST_I1 0
+#define DEST_G2 1
+#define DEST_I2 2   
+#define DEST_G3 3 
+#define DEST_I3 4
+#define DEST_G4 5
+#define DEST_ADV1 6
+#define DEST_ADV2 7
+#define DEST_ADV3 8  
+
+ apply_move_trampoline:
+  tr_g = apply_move(tr_g, tr_m);
+  goto exit_tr;
+ mkLegalIterator_trampoline:
+  tr_i = mkLegalIterator(tr_g);
+  goto exit_tr;  
+ advance_iterator_legal_trampoline:
+  tr_i = advance_iterator_legal(tr_g, tr_i);
+  goto exit_tr;
+ exit_tr:
+   switch (tr_cont) {
+   case DEST_I1: goto dest_i1;
+   case DEST_G2: goto dest_g2;
+   case DEST_I2: goto dest_i2;
+   case DEST_G3: goto dest_g3;
+   case DEST_I3: goto dest_i3;
+   case DEST_G4: goto dest_g4;
+   case DEST_ADV1: goto dest_adv1;
+   case DEST_ADV2: goto dest_adv2;
+   case DEST_ADV3: goto dest_adv3;
+   default: abort();
+   }
+ begin_loop:
+  // depth 1
+   max1 = VALUE_NEGAMAX_START;
+  // trampolined: iterator i1 = mkLegalIterator(g1);
+  tr_g = g1; tr_cont = DEST_I1; goto mkLegalIterator_trampoline;
+ dest_i1: i1 = tr_i;
+  while (! is_iterator_finished(i1)) {
+    m1 = dereference_iterator(i1);
+    // trampolined: gamestate g2 = apply_move(g1, m1);
+    tr_g = g1; tr_m = m1; tr_cont = DEST_G2; goto apply_move_trampoline;
+  dest_g2: g2 = tr_g;
+    // depth 2
+    max2 = VALUE_NEGAMAX_START;
+    // trampolined: iterator i2 = mkLegalIterator(g2)
+    tr_g = g2; tr_cont = DEST_I2; goto mkLegalIterator_trampoline;
+  dest_i2: i2 = tr_i;
+    while (! is_iterator_finished(i2)) {
+      m2 = dereference_iterator(i2);
+      // trampolined: gamestate g3 = apply_move(g2, m2);
+      tr_g = g2; tr_m = m2; tr_cont = DEST_G3; goto apply_move_trampoline;
+    dest_g3: g3 = tr_g;
+      // depth 3
+      max3 = VALUE_NEGAMAX_START;
+      // trampolined: iterator i3 = mkLegalIterator(g3)
+      tr_g = g3; tr_cont = DEST_I3; goto mkLegalIterator_trampoline;
+    dest_i3: i3 = tr_i;
+      while (! is_iterator_finished(i3)) {
+        m3 = dereference_iterator(i3);
+        // trampolined: gamestate g4 = apply_move(g3, m3);
+        tr_g = g3; tr_m = m3; tr_cont = DEST_G4;  goto apply_move_trampoline;
+      dest_g4: g4 = tr_g;
+        // depth 4
+        score = evaluate(g4);
+        score = -score;
+        if (score > max3) {
+          max3 = score;
+        }
+        // trampolined: i3 = advance_iterator_legal(g3, i3)) {
+        tr_g = g3; tr_i = i3; tr_cont = DEST_ADV3; goto advance_iterator_legal_trampoline;
+      dest_adv3:;
+      }
+      max3 = -max3;
+      if (max3 > max2) {
+        max2 = max2;
+      }
+      // trampolined: i2 = advance_iterator_legal(i2, i2);
+      tr_g = g2; tr_i = i2; tr_cont = DEST_ADV2; goto advance_iterator_legal_trampoline;
+    dest_adv2:;
+    }
+    max2 = -max2;
+    if (max2 > max1) {
+      max1 = max2;
+      best_move = m1;
+    }
+    // trampolined: i1 = advance_iterator_legal(g1, i1)
+    tr_g = g1; tr_i = i1; tr_cont = DEST_ADV1; goto advance_iterator_legal_trampoline;
+  dest_adv1:;
+  }
+  negamax_ret ret;
+  ret.m = best_move;
+  ret.score = max1;
+  return ret;
 }

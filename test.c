@@ -1315,34 +1315,63 @@ void test_perft()
   }
 }
 
+int negamax_simple(gamestate g, int depth, int color) {
+  if (depth == 0)
+    return color*evaluate(g);
+  int max = VALUE_NEGAMAX_START;
+  for (iterator i = mkLegalIterator(g); ! is_iterator_finished(i); i = advance_iterator_legal(g, i))  {
+    move m = dereference_iterator(i);
+    gamestate g2 = apply_move(g, m);
+    int score = -negamax_simple(g2, depth - 1, color*-1);
+    if (score > max)
+      max = score;
+  }
+  return max;
+}
+
+void test_search()
+{
+  {
+    gamestate g = new_game();
+    move m = best_move(g);
+    print_move(m);
+    /* int score = negamax_original(g); */
+    /* printf("Score: %d\n", score); */
+    /* negamax_ret x = negamax(g); */
+    /* print_move(x.m); */
+    /* printf("\nScore: %d\n", x.score); */
+  }
+}
+
 int main() {
-  test_ray();
-  test_rook();
-  test_pawn();
-  test_knight();
-  test_king();
-  test_bishop();
-  test_iterator();
-  test_apply_move();
-  test_check();
-  test_castling();
-  test_promotions();
-  test_perft();
+  /* test_ray(); */
+  /* test_rook(); */
+  /* test_pawn(); */
+  /* test_knight(); */
+  /* test_king(); */
+  /* test_bishop(); */
+  /* test_iterator(); */
+  /* test_apply_move(); */
+  /* test_check(); */
+  /* test_castling(); */
+  /* test_promotions(); */
+  /* test_perft(); */
+  test_search();
   /* gamestate g = new_game(); */
   /* iterator i = mkIterator(g); */
   
   /* print_bitboard(i.current_piece_bb); */
 
-  gamestate g = new_game();
-  // 1: c2c4
-  move m1; m1.from = mkPosition(2,1); m1.to = mkPosition(2,3);
-  g = swap_board(apply_move(g, m1));
-  // 2: d2d4
-  move m2; m2.from = mkPosition(3,1); m2.to = mkPosition(3,3);
-  g = swap_board(apply_move(g, m2));
-  // 3: c4d5
-  move m3; m3.from = mkPosition(2,3); m3.to = mkPosition(3,4);
-  g = swap_board(apply_move(g, m3));
+  /* gamestate g = new_game(); */
+  /* // 1: c2c4 */
+  /* move m1; m1.from = mkPosition(2,1); m1.to = mkPosition(2,3); */
+  /* g = swap_board(apply_move(g, m1)); */
+  /* // 2: d2d4 */
+  /* move m2; m2.from = mkPosition(3,1); m2.to = mkPosition(3,3); */
+  /* g = swap_board(apply_move(g, m2)); */
+  /* // 3: c4d5 */
+  /* move m3; m3.from = mkPosition(2,3); m3.to = mkPosition(3,4); */
+  /* g = swap_board(apply_move(g, m3)); */
   /* // 4: c1a3 */
   /* move m4; m4.from = mkPosition(2,0); m4.to = mkPosition(0,2); */
   /* g = swap_board(apply_move(g, m4)); */
