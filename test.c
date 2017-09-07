@@ -47,6 +47,15 @@ void print_gamestate(gamestate g)
     }
     putchar('\n');
   }
+  printf("Flags: ");
+  if (! g.castle_flags) { putchar('-'); }
+  else {
+    if (g.castle_flags & CASTLE_WHITE_KINGSIDE) { putchar('K'); }
+    if (g.castle_flags & CASTLE_WHITE_QUEENSIDE) { putchar('Q'); }
+    if (g.castle_flags & CASTLE_BLACK_KINGSIDE) { putchar('k'); }
+    if (g.castle_flags & CASTLE_BLACK_QUEENSIDE) { putchar('q'); }
+  }
+  putchar('\n');
 }
 
 void print_move(move m) {
@@ -117,6 +126,15 @@ void assert_equal_int(const char* message, int x, int y)
   if (x != y) {
     printf("ASSERTION_FAILURE: %s\n", message);
     printf("%d != %d", x,y);
+    throw "derp";
+  }
+}
+
+void assert_equal_u64(const char* message, uint64_t x, uint64_t y)
+{
+  if (x != y) {
+    printf("ASSERTION_FAILURE: %s\n", message);
+    printf("%lu != %lu", x,y);
     throw "derp";
   }
 }
@@ -801,6 +819,7 @@ void test_castling()
     gamestate g2 = apply_move(g, m);
     assert_equal_bb("test_castling_1_king", bit(CASTLE_KINGSIDE_KPOS), g2.kings_bb);
     assert_equal_bb("test_castling_1_rook", bit(CASTLE_KINGSIDE_RPOS), g2.rooks_bb);
+    assert_equal_u64("test_castling_1_flags", 0, g2.castle_flags);
   }
   // Queenside castle 1
   {
@@ -823,6 +842,7 @@ void test_castling()
     gamestate g2 = apply_move(g, m);
     assert_equal_bb("test_castling_2_king", bit(mkPosition(2,0)), g2.kings_bb);
     assert_equal_bb("test_castling_2_rook", bit(mkPosition(3,0)), g2.rooks_bb);
+    assert_equal_u64("test_castling_2_flags", 0, g2.castle_flags);
   }
   // Kingside castle blocked by check 1
   {
@@ -931,6 +951,65 @@ void test_castling()
     uint64_t actual = valid_king_moves(g, mkPosition(4,0));
     assert_equal_bb("test_castling_8_moves", expected, actual);
   }
+  // Castle flags swap
+  {
+    {
+      gamestate g = zerostate();
+      g.castle_flags = CASTLE_WHITE_KINGSIDE;
+      g = swap_board(g);
+      assert_equal_u64("test_castling_9_flag_wk", CASTLE_BLACK_KINGSIDE, g.castle_flags);
+    }
+    {
+      gamestate g = zerostate();
+      g.castle_flags = CASTLE_WHITE_QUEENSIDE;
+      g = swap_board(g);
+      assert_equal_u64("test_castling_9_flag_wk", CASTLE_BLACK_QUEENSIDE, g.castle_flags);
+    }
+    {
+      gamestate g = zerostate();
+      g.castle_flags = CASTLE_BLACK_KINGSIDE;
+      g = swap_board(g);
+      assert_equal_u64("test_castling_9_flag_wk", CASTLE_WHITE_KINGSIDE, g.castle_flags);
+    }
+    {
+      gamestate g = zerostate();
+      g.castle_flags = CASTLE_BLACK_QUEENSIDE;
+      g = swap_board(g);
+      assert_equal_u64("test_castling_9_flag_wk", CASTLE_WHITE_QUEENSIDE, g.castle_flags);
+    }
+  }
+  // Moving kingside rook deletes flag
+  {
+    gamestate g = zerostate();
+    g.rooks_bb = bit(mkPosition(7,0));
+    g.kings_bb = bit(mkPosition(4,0));
+    g.castle_flags = CASTLE_WHITE_KINGSIDE;
+    move m; m.from = mkPosition(7,0); m.to = mkPosition(6,0);
+    gamestate g2 = apply_move(g, m);
+    assert_equal_u64("test_castling_10_flag_kingrook_delete", 0, g2.castle_flags);
+  }
+  // Moving queenside rook deletes flag
+  {
+    gamestate g = zerostate();
+    g.rooks_bb = bit(mkPosition(0,0));
+    g.kings_bb = bit(mkPosition(4,0));
+    g.castle_flags = CASTLE_WHITE_QUEENSIDE;
+    move m; m.from = mkPosition(0,0); m.to = mkPosition(2,0);
+    gamestate g2 = apply_move(g, m);
+    assert_equal_u64("test_castling_11_flag_queenrook_delete", 0, g2.castle_flags);
+  }
+  // Moving king deletes both flags
+  {
+    gamestate g = zerostate();
+    g.kings_bb = bit(mkPosition(4,0));
+    g.rooks_bb =
+      bit(mkPosition(7,0)) |
+      bit(mkPosition(0,0));
+    g.castle_flags = CASTLE_WHITE_KINGSIDE | CASTLE_WHITE_QUEENSIDE;
+    move m; m.from = mkPosition(4,0); m.to = mkPosition(5,0);
+    gamestate g2 = apply_move(g, m);
+    assert_equal_u64("test_castling_12_flag_king_delete", 0, g2.castle_flags);
+  }
 }
 
 void test_promotions()
@@ -996,7 +1075,7 @@ void perft_divide_helper1(gamestate g, move m, int d)
   gamestate g2 = swap_board(apply_move(g, m));
   walk_game_tree(g2, perft_divide_depth, tick_counter);
   print_move(m);
-  printf(": %lu\n", n);
+  printf(" %lu\n", n);
 }
 
 int perft_divide(gamestate g, int depth)
@@ -1054,6 +1133,102 @@ void print_fen(gamestate g)
   printf(" 0 1\n");
 }
 
+gamestate parse_fen(const char* s)
+{
+  const char *orig_s = s;
+  // Pieces
+  gamestate g = zerostate();
+  for (int r = 8; r --> 0;) {
+    for (int f = 0;; f++) {
+      int pos = mkPosition(f,r);
+      char c = *s++;
+      switch (c) {
+      case 'R': g.current_piece_bb |= bit(pos);
+      case 'r': g.rooks_bb |= bit(pos); break;
+      case 'N': g.current_piece_bb |= bit(pos);
+      case 'n': g.knights_bb |= bit(pos); break;
+      case 'B': g.current_piece_bb |= bit(pos);
+      case 'b': g.bishops_bb |= bit(pos); break;
+      case 'Q': g.current_piece_bb |= bit(pos);
+      case 'q': g.queens_bb |= bit(pos); break;
+      case 'K': g.current_piece_bb |= bit(pos);
+      case 'k': g.kings_bb |= bit(pos); break;
+      case 'P': g.current_piece_bb |= bit(pos);
+      case 'p': g.pawns_bb |= bit(pos); break;
+      case '8': f++;
+      case '7': f++;
+      case '6': f++;
+      case '5': f++;
+      case '4': f++;
+      case '3': f++;
+      case '2': f++;
+      case '1': break;
+      case '/': goto end_row;
+      case ' ': goto end_loop;
+      default: printf("Unknown char: %c\n", c); goto end_loop;
+      }
+    }
+  end_row:;
+  }
+ end_loop:
+  // Color
+  // TODO: Implement this
+  s++;
+  s++;
+  // Castle flags
+  while (*s != ' ') {
+    switch (*s++) {
+    case 'K': g.castle_flags |= CASTLE_WHITE_KINGSIDE; break;
+    case 'Q': g.castle_flags |= CASTLE_WHITE_QUEENSIDE; break;
+    case 'k': g.castle_flags |= CASTLE_BLACK_KINGSIDE; break;
+    case 'q': g.castle_flags |= CASTLE_BLACK_QUEENSIDE; break;
+    case '-': break;
+    default: abort();
+    }
+  }
+  return g;
+}
+
+void test_perft()
+{
+  // Initial position
+  {
+    /* assert_equal_u64("Perft(1)", 20, perft(1)); */
+    /* assert_equal_u64("Perft(2)", 400, perft(2)); */
+    /* assert_equal_u64("Perft(3)", 8902, perft(3)); */
+    /* assert_equal_u64("Perft(4)", 197281, perft(4)); */
+    /* assert_equal_u64("Perft(5)", 4865609, perft(5)); */
+  }
+  // Initial position(read from string)
+  {
+    gamestate g = parse_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+    /* assert_equal_u64("Perft(1)", 20,      perft_from(g,1)); */
+    /* assert_equal_u64("Perft(2)", 400,     perft_from(g,2)); */
+    /* assert_equal_u64("Perft(3)", 8902,    perft_from(g,3)); */
+    /* assert_equal_u64("Perft(4)", 197281,  perft_from(g,4)); */
+    /* assert_equal_u64("Perft(5)", 4865609, perft_from(g,5)); */
+    /* assert_equal_u64("Perft(6)", 119060324, perft_from(g,6)); */
+    /* assert_equal_u64("Perft(7)", 3195901860, perft_from(g,7)); */
+    
+  }
+  // Promotion position
+  {
+    gamestate g = parse_fen("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
+    // 1: e1g1
+    /* move m; m.from = mkPosition(4,0); m.to = mkPosition(6,0); */
+    /* g = swap_board(apply_move(g, m)); */
+    perft_divide(g, 0);
+    /* print_gamestate(g); */
+    /* print_fen(g); */
+    assert_equal_u64("good_perft_1", 48,          perft_from(g,1));
+    assert_equal_u64("good_perft_2", 2039,        perft_from(g,2));
+    assert_equal_u64("good_perft_3", 97862,       perft_from(g,3));
+    assert_equal_u64("good_perft_4", 4085603,     perft_from(g,4));
+    /* assert_equal_u64("promotion_perft_5", 193690690,   perft_from(g,5)); */
+    /* assert_equal_u64("promotion_perft_6", 8031647685,  perft_from(g,6)); */
+  }
+}
+
 int main() {
   test_ray();
   test_rook();
@@ -1066,6 +1241,7 @@ int main() {
   test_check();
   test_castling();
   test_promotions();
+  test_perft();
   /* gamestate g = new_game(); */
   /* iterator i = mkIterator(g); */
   
@@ -1101,20 +1277,13 @@ int main() {
   /* g = swap_board(apply_move(g, m1)); */
   /* /\* // 2: B1A3 *\/ */
   /* g = swap_board(apply_move(g, m1)); */
-  print_fen(g);
+  /* print_fen(g); */
   /* /\* print_gamestate(g); *\/ */
-  perft_divide(g, 1);
+  // perft_divide(g, 1);
   /* print_gamestate(g); */
   /* printf("== rooks\n"); print_bitboard(g.rooks_bb); */
   /* printf("== pawns\n"); print_bitboard(g.pawns_bb); */
 
   /* print_moves(g); */
-  
-  printf("Perft(0): %lu\n", perft(0));
-  printf("Perft(1): %lu\n", perft(1));
-  printf("Perft(2): %lu\n", perft(2));
-  printf("Perft(3): %lu\n", perft(3));
-  printf("Perft(4): %lu\n", perft(4));
-  printf("Perft(5): %lu\n", perft(5));
-  printf("Perft(6): %lu\n", perft(6));
+ 
 }

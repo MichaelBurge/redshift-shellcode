@@ -23,8 +23,8 @@ typedef struct gamestate {
   };
   int en_passant_sq;
   union {
-    int castle_flags;
-    int promotion_piece; // For iterators
+    uint64_t castle_flags;
+    uint64_t promotion_piece; // For iterators
   };
 } gamestate;
 
@@ -774,11 +774,18 @@ private gamestate swap_board(gamestate g)
   if (g.en_passant_sq != POSITION_INVALID) {
     g.en_passant_sq = mkPosition(file(g.en_passant_sq), 7 - rank(g.en_passant_sq));
   }
-  g.castle_flags =
-    (g.castle_flags & CASTLE_WHITE_KINGSIDE << 2) |
-    (g.castle_flags & CASTLE_WHITE_QUEENSIDE << 2) |
-    (g.castle_flags & CASTLE_BLACK_KINGSIDE >> 2) |
-    (g.castle_flags & CASTLE_BLACK_QUEENSIDE >> 2);
+  {
+    int flags = 0;
+    if (g.castle_flags & CASTLE_WHITE_KINGSIDE)
+      flags |= CASTLE_BLACK_KINGSIDE;
+    if (g.castle_flags & CASTLE_WHITE_QUEENSIDE)
+      flags |= CASTLE_BLACK_QUEENSIDE;
+    if (g.castle_flags & CASTLE_BLACK_KINGSIDE)
+      flags |= CASTLE_WHITE_KINGSIDE;
+    if (g.castle_flags & CASTLE_BLACK_QUEENSIDE)
+      flags |= CASTLE_WHITE_QUEENSIDE;
+    g.castle_flags = flags;
+  }
   return g;
 }
 
@@ -840,19 +847,35 @@ private gamestate apply_move(gamestate g, move m)
   }
   // Check for kingside castle.
   if (is_kingside_castle(g_orig, m)) {
-    g.castle_flags = clear_bit(g.castle_flags, CASTLE_WHITE_KINGSIDE);
+    g.castle_flags &= ~CASTLE_WHITE_KINGSIDE;
     g.rooks_bb = clear_bit(g.rooks_bb, mkPosition(7,0));
-    g.current_piece_bb = clear_bit(g.rooks_bb, mkPosition(7,0));
+    g.current_piece_bb = clear_bit(g.current_piece_bb, mkPosition(7,0));
     g.rooks_bb = set_bit(g.rooks_bb, CASTLE_KINGSIDE_RPOS);
-    g.current_piece_bb = set_bit(g.rooks_bb, CASTLE_KINGSIDE_RPOS);
+    g.current_piece_bb = set_bit(g.current_piece_bb, CASTLE_KINGSIDE_RPOS);
   }
   // Check for queenside castle
   if (is_queenside_castle(g_orig,m)) {
-    g.castle_flags = clear_bit(g.castle_flags, CASTLE_WHITE_QUEENSIDE);
+    g.castle_flags &= ~CASTLE_WHITE_QUEENSIDE;
     g.rooks_bb = clear_bit(g.rooks_bb, mkPosition(0,0));
-    g.current_piece_bb = clear_bit(g.rooks_bb, mkPosition(0,0));
+    g.current_piece_bb = clear_bit(g.current_piece_bb, mkPosition(0,0));
     g.rooks_bb = set_bit(g.rooks_bb, CASTLE_QUEENSIDE_RPOS);
-    g.current_piece_bb = set_bit(g.rooks_bb, CASTLE_QUEENSIDE_RPOS);
+    g.current_piece_bb = set_bit(g.current_piece_bb, CASTLE_QUEENSIDE_RPOS);
+  }
+  // Clear left rook flags
+  if (g.castle_flags & CASTLE_WHITE_KINGSIDE &&
+      from_piece == PIECE_ROOK &&
+      m.from == mkPosition(7,0)) {
+    g.castle_flags &= ~CASTLE_WHITE_KINGSIDE;
+  }
+  // Clear right rook flags
+  if (g.castle_flags & CASTLE_WHITE_QUEENSIDE &&
+      from_piece == PIECE_ROOK &&
+      m.from == mkPosition(0,0)) {
+    g.castle_flags &= ~CASTLE_WHITE_QUEENSIDE;
+  }
+  // Clear king flags
+  if (from_piece == PIECE_KING) {
+    g.castle_flags &= ~(CASTLE_WHITE_KINGSIDE | CASTLE_WHITE_QUEENSIDE);
   }
   // Set colors
   g.current_player_bb = clear_bit(g.current_player_bb, m.from) | bit(m.to);
@@ -927,17 +950,24 @@ bool results_in_check(gamestate g, move m)
 
 bool is_legal(gamestate g, move m)
 {
+  if (results_in_check(g,m)) {
+    return false;
+  }
   move kingside_castle_part; kingside_castle_part.from = mkPosition(4,0); kingside_castle_part.to = mkPosition(5,0);
   move queenside_castle_part; queenside_castle_part.from = mkPosition(4,0); queenside_castle_part.to = mkPosition(3,0);
-  
+  bool valid_kingside_castle =
+    is_kingside_castle(g, m)
+    ? (! results_in_check(g, kingside_castle_part) &&
+       ! is_in_check(g))
+    : true;
+  bool valid_queenside_castle =
+    is_queenside_castle(g, m)
+    ? (! results_in_check(g, queenside_castle_part) &&
+       ! is_in_check(g))
+    : true;
   return
-    ! results_in_check(g, m) &&
-    (! is_kingside_castle(g,m) ||
-     (! results_in_check(g, kingside_castle_part) &&
-      ! is_in_check(g))) &&
-    (! is_queenside_castle(g,m) ||
-     (! results_in_check(g, queenside_castle_part) &&
-      ! is_in_check(g)));
+    valid_kingside_castle &&
+    valid_queenside_castle;
 }
 
 // Like advance_iterator, but skip moves that leave the king in check
