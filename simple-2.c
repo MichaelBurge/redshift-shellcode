@@ -9,6 +9,7 @@ int x(int l) {
   }
   return ret;
 }
+// 1 + 1 + 2 + 6 + 24 = 33
 
 static int y(int x) { return x+42; }
 static int factorial(int x) {

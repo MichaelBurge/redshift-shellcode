@@ -16,5 +16,4 @@ if 0 != err:
     raise Exception("mprotect: " + str(code))
 
 fptr = cast(code_ptr, CFUNCTYPE(c_long, c_long))
-print fptr(100)
 libc.free(code_ptr)
