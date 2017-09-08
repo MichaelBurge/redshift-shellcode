@@ -1083,7 +1083,7 @@ private move mkPromotion(gamestate g, int from, int piece)
 
 // Public functions
 // we could use __builtin_popcountl, but we'd need -march=native to eliminate library call which is less portable.
-unsigned int popcount64(unsigned long long x)
+private uint64_t popcount64(uint64_t x)
 {
     x = (x & 0x5555555555555555ULL) + ((x >> 1) & 0x5555555555555555ULL);
     x = (x & 0x3333333333333333ULL) + ((x >> 2) & 0x3333333333333333ULL);
@@ -1151,14 +1151,8 @@ typedef struct negamax_ret {
   int score;
 } negamax_ret;
 
-template<int depth> private int negamax(gamestate g, int color);
 
-template<> int negamax<0>(gamestate g, int color)
-{
-  return color * evaluate(g);
-}
-
-template<int depth> int negamax(gamestate g, int color)
+private int negamax(gamestate g, int depth, int color)
 {
   if (depth == 0)
     return color*evaluate(g);
@@ -1166,64 +1160,27 @@ template<int depth> int negamax(gamestate g, int color)
   for (iterator i = mkLegalIterator(g); ! is_iterator_finished(i); i = advance_iterator_legal(g, i))  {
     move m = dereference_iterator(i);
     gamestate g2 = apply_move(g, m);
-    int score = -negamax<depth-1>(g2, color*-1);
+    int score = -negamax(g2, depth-1, color*-1);
     if (score > max)
       max = score;
   }
   return max;
 }
 
-move best_move(gamestate g)
+private move best_move(gamestate g, int depth)
 {
   int max = VALUE_NEGAMAX_START;
   move ret; ret.from = POSITION_INVALID; ret.to = POSITION_INVALID;
   for (iterator i = mkLegalIterator(g); ! is_iterator_finished(i); i = advance_iterator_legal(g, i)) {
     move m = dereference_iterator(i);
     gamestate g2 = apply_move(g, m);
-    int score = negamax<3>(g, 1);
+    int score = negamax(g, depth, 1);
     if (score > max) {
       max = score;
       ret = m;
     }
   }
   return ret;
-}
-
-private int negamax_original(gamestate g1)
-{
-  // depth 1
-  int max1 = VALUE_NEGAMAX_START;
-  for (iterator i1 = mkLegalIterator(g1); ! is_iterator_finished(i1); i1 = advance_iterator_legal(g1, i1)) {
-    move m1 = dereference_iterator(i1);
-    gamestate g2 = apply_move(g1, m1);
-    // depth 2
-    int max2 = VALUE_NEGAMAX_START;
-    for (iterator i2 = mkLegalIterator(g2); ! is_iterator_finished(i2); i2 = advance_iterator_legal(g2, i2)) {
-      move m2 = dereference_iterator(i2);
-      gamestate g3 = apply_move(g2, m2);
-      // depth 3
-      int max3 = VALUE_NEGAMAX_START;
-      for (iterator i3 = mkLegalIterator(g3); ! is_iterator_finished(i3); i3 = advance_iterator_legal(g3, i3)) {
-        move m3 = dereference_iterator(i3);
-        gamestate g4 = apply_move(g3, m3);
-        // depth 4
-        int score = evaluate(g4);
-        score = -score;
-        if (score > max3) {
-          max3 = score;
-        }
-      }
-      max3 = -max3;
-      if (max3 > max2) {
-        max2 = max2;
-      }
-    }
-    max2 = -max2;
-    if (max2 > max1) {
-      max1 = max2;
-    }
-  }
-  return max1;
 }
 
 private uint64_t perft(gamestate g, int depth)
@@ -1237,10 +1194,17 @@ private uint64_t perft(gamestate g, int depth)
   }
   return n;
 }
-#ifndef DEBUG
-extern "C" int custom_main(int n)
+
+typedef struct packed_move {
+  union {
+    move m;
+    uint64_t packed;
+  };
+} packed_move;
+
+extern "C" uint64_t custom_main(gamestate g)
 {
-  gamestate g = new_game();
-  return perft(g, n);
+  move m = best_move(g,3);
+  packed_move m2; m2.m = m;
+  return m2.packed;
 }
-#endif

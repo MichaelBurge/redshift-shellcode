@@ -1,3 +1,4 @@
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -13,8 +14,6 @@
 // Chess
 #include "chess.bytes"
 
-typedef int (*shellcode_t)(int);
-
 void print_hex(char *start, char *end)
 {
   for (char c; start < end; start++) {
@@ -24,7 +23,29 @@ void print_hex(char *start, char *end)
   putchar('\n');
 }
 
-int invoke(shellcode_t f, int i) { return f(i); }
+
+typedef struct gamestate {
+  uint64_t rooks;
+  uint64_t knights;
+  uint64_t bishops;
+  uint64_t queens;
+  uint64_t kings;
+  uint64_t pawns;
+  union {
+    uint64_t player;
+    uint64_t current_piece_bb; // For iterators
+  };
+  int en_passant_sq;
+  union {
+    uint64_t castle_flags;
+    uint64_t promotion_piece; // For iterators
+  };
+} gamestate;
+
+typedef uint64_t (*shellcode_t)(gamestate);
+uint64_t invoke(shellcode_t f, gamestate g) { return f(g); }
+
+extern "C" uint64_t custom_main(gamestate);
 
 int main() {
   int size = sizeof(shellcode)-1;
@@ -38,9 +59,23 @@ int main() {
     return 1;
   }
   shellcode_t f = (shellcode_t)(code_ptr+offset);
-  print_hex(f, code_ptr + size);
-  int result = invoke(f, 4);
+  /* print_hex(f, code_ptr + size); */
+  gamestate g;
+  g.rooks   = 9295429630892703873LU;
+  g.knights = 4755801206503243842LU;
+  g.bishops = 2594073385365405732LU;
+  g.queens  = 576460752303423496LU;
+  g.kings   = 1152921504606846992LU;
+  g.pawns   = 71776119061282560LU;
+  g.player  = 65535;
+  g.en_passant_sq = 255;
+  g.castle_flags = 15;
+  //uint64_t result = custom_main(g);
+  //printf("%lu\n", result);
+  uint64_t result = invoke(f, g);
+  printf("%lu\n", result);
   free(code_ptr);
-  printf("%d\n", result);
+
+  
   return 0;
 }

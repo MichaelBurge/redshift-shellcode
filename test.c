@@ -1,4 +1,4 @@
-//#define DEBUG 1
+#define DEBUG 1
 #define PRINT 1
 #include "chess.c"
 #include <stdio.h>
@@ -1339,9 +1339,9 @@ int negamax_simple(gamestate g, int depth, int color) {
 void test_search()
 {
   {
-    gamestate g = new_game();
-    move m = best_move(g);
-    print_move(m);
+    /* gamestate g = new_game(); */
+    /* /\* move m = best_move(g); *\/ */
+    /* print_move(m); */
     /* int score = negamax_original(g); */
     /* printf("Score: %d\n", score); */
     /* negamax_ret x = negamax(g); */
@@ -1350,13 +1350,13 @@ void test_search()
   }
 }
 
-int main()
-{
-  gamestate g = new_game();
-  uint64_t result = perft(g, 2);
-  printf("%lu", result);
-  return 0;
-}
+/* int main() */
+/* { */
+/*   gamestate g = new_game(); */
+/*   uint64_t result = perft(g, 2); */
+/*   printf("%lu", result); */
+/*   return 0; */
+/* } */
 
 /* int main() { */
 /*   /\* test_ray(); *\/ */
@@ -1417,3 +1417,20 @@ int main()
 /*   /\* print_moves(g); *\/ */
  
 /* } */
+int main()
+{
+  packed_move m;
+  m.packed = 68719476737; // b1a3
+  print_move(m.m);
+  /* gamestate g = new_game(); */
+  /* printf("rooks: %ld\n", g.rooks_bb); */
+  /* printf("knights: %ld\n", g.knights_bb); */
+  /* printf("bishops: %ld\n", g.bishops_bb); */
+  /* printf("queens: %ld\n", g.queens_bb); */
+  /* printf("kings: %ld\n", g.kings_bb); */
+  /* printf("pawns: %ld\n", g.pawns_bb); */
+  /* printf("player: %ld\n", g.current_player_bb); */
+  /* printf("en_passant_sq: %d\n", g.en_passant_sq); */
+  /* printf("castle_flags: %ld\n", g.castle_flags); */
+  /* printf("perft: %lu\n", custom_main(g)); */
+}
