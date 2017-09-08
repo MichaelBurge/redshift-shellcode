@@ -1,8 +1,8 @@
 from ctypes import *
 
-from shellcode_bytes import shellcode
+from shellcode_bytes import shellcode, offset
 #shellcode = b'\xb8\x2a\x00\x00\x00\xc3'
-offset = 26
+#offset = 26
 
 def execute():
     libc = CDLL('libc.so.6')
@@ -18,9 +18,9 @@ def execute():
     if 0 != err:
         raise Exception("mprotect: " + str(code))
 
-    main_ptr = c_void_p(c_uint64(offset).value)
+    main_ptr = c_void_p(c_uint64(code_ptr.value).value + c_uint64(offset).value)
     fptr = cast(main_ptr, CFUNCTYPE(c_long, c_long))
-    result = fptr(5)
+    result = fptr(3)
     libc.free(code_ptr)
     return result
 

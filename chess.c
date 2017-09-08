@@ -3,10 +3,10 @@
 #ifdef DEBUG
 #define abort() __builtin_trap();
 //#define abort() throw "derp";
-#define private static __attribute__((always_inline)) inline
+#define private static
 #else
-#define private static __attribute__((always_inline)) inline
-#define abort() __builtin_unreachable();
+#define private static
+#define abort() __builtin_trap();
 #endif
 
 // bb is 'bitboard'
@@ -147,7 +147,7 @@ const uint64_t RAY_A1H8 =
   bit(mkPosition(7,7))
   ;
 
-#ifdef DEBUG
+#ifdef PRINT
 #include <stdio.h>
 void print_pos(int pos) {
   printf("%c%d", file(pos) + 'a', rank(pos)+1);
@@ -1218,123 +1218,22 @@ private int negamax_original(gamestate g1)
   }
   return max1;
 }
-typedef int continuation;
-private negamax_ret negamax(gamestate g1)
-{
-  // Arguments shared between all trampolines
-  continuation tr_cont;
-  gamestate tr_g;
-  gamestate g2;
-  gamestate g3;
-  gamestate g4;
-  move tr_m;
-  iterator tr_i;
-  iterator i1;
-  iterator i2;
-  iterator i3;
-  int max1;
-  int max2;
-  int max3;
-  int score;
-  
-  move best_move;
-  move m1;
-  move m2;
-  move m3;
-  goto begin_loop;
-  // Trampoline return destinations
-#define DEST_I1 0
-#define DEST_G2 1
-#define DEST_I2 2   
-#define DEST_G3 3 
-#define DEST_I3 4
-#define DEST_G4 5
-#define DEST_ADV1 6
-#define DEST_ADV2 7
-#define DEST_ADV3 8  
 
- apply_move_trampoline:
-  tr_g = apply_move(tr_g, tr_m);
-  goto exit_tr;
- mkLegalIterator_trampoline:
-  tr_i = mkLegalIterator(tr_g);
-  goto exit_tr;  
- advance_iterator_legal_trampoline:
-  tr_i = advance_iterator_legal(tr_g, tr_i);
-  goto exit_tr;
- exit_tr:
-   switch (tr_cont) {
-   case DEST_I1: goto dest_i1;
-   case DEST_G2: goto dest_g2;
-   case DEST_I2: goto dest_i2;
-   case DEST_G3: goto dest_g3;
-   case DEST_I3: goto dest_i3;
-   case DEST_G4: goto dest_g4;
-   case DEST_ADV1: goto dest_adv1;
-   case DEST_ADV2: goto dest_adv2;
-   case DEST_ADV3: goto dest_adv3;
-   default: abort();
-   }
- begin_loop:
-  // depth 1
-   max1 = VALUE_NEGAMAX_START;
-  // trampolined: iterator i1 = mkLegalIterator(g1);
-  tr_g = g1; tr_cont = DEST_I1; goto mkLegalIterator_trampoline;
- dest_i1: i1 = tr_i;
-  while (! is_iterator_finished(i1)) {
-    m1 = dereference_iterator(i1);
-    // trampolined: gamestate g2 = apply_move(g1, m1);
-    tr_g = g1; tr_m = m1; tr_cont = DEST_G2; goto apply_move_trampoline;
-  dest_g2: g2 = tr_g;
-    // depth 2
-    max2 = VALUE_NEGAMAX_START;
-    // trampolined: iterator i2 = mkLegalIterator(g2)
-    tr_g = g2; tr_cont = DEST_I2; goto mkLegalIterator_trampoline;
-  dest_i2: i2 = tr_i;
-    while (! is_iterator_finished(i2)) {
-      m2 = dereference_iterator(i2);
-      // trampolined: gamestate g3 = apply_move(g2, m2);
-      tr_g = g2; tr_m = m2; tr_cont = DEST_G3; goto apply_move_trampoline;
-    dest_g3: g3 = tr_g;
-      // depth 3
-      max3 = VALUE_NEGAMAX_START;
-      // trampolined: iterator i3 = mkLegalIterator(g3)
-      tr_g = g3; tr_cont = DEST_I3; goto mkLegalIterator_trampoline;
-    dest_i3: i3 = tr_i;
-      while (! is_iterator_finished(i3)) {
-        m3 = dereference_iterator(i3);
-        // trampolined: gamestate g4 = apply_move(g3, m3);
-        tr_g = g3; tr_m = m3; tr_cont = DEST_G4;  goto apply_move_trampoline;
-      dest_g4: g4 = tr_g;
-        // depth 4
-        score = evaluate(g4);
-        score = -score;
-        if (score > max3) {
-          max3 = score;
-        }
-        // trampolined: i3 = advance_iterator_legal(g3, i3)) {
-        tr_g = g3; tr_i = i3; tr_cont = DEST_ADV3; goto advance_iterator_legal_trampoline;
-      dest_adv3:;
-      }
-      max3 = -max3;
-      if (max3 > max2) {
-        max2 = max2;
-      }
-      // trampolined: i2 = advance_iterator_legal(i2, i2);
-      tr_g = g2; tr_i = i2; tr_cont = DEST_ADV2; goto advance_iterator_legal_trampoline;
-    dest_adv2:;
-    }
-    max2 = -max2;
-    if (max2 > max1) {
-      max1 = max2;
-      best_move = m1;
-    }
-    // trampolined: i1 = advance_iterator_legal(g1, i1)
-    tr_g = g1; tr_i = i1; tr_cont = DEST_ADV1; goto advance_iterator_legal_trampoline;
-  dest_adv1:;
+private uint64_t perft(gamestate g, int depth)
+{
+  if (depth == 0) { return 1; }
+  uint64_t n = 0;
+  for (iterator i = mkLegalIterator(g); ! is_iterator_finished(i); i = advance_iterator_legal(g, i)) {
+    move m = dereference_iterator(i);
+    gamestate g2 = swap_board(apply_move(g, m));
+    n += perft(g2, depth-1);
   }
-  negamax_ret ret;
-  ret.m = best_move;
-  ret.score = max1;
-  return ret;
+  return n;
 }
+#ifndef DEBUG
+extern "C" int custom_main(int n)
+{
+  gamestate g = new_game();
+  return perft(g, n);
+}
+#endif

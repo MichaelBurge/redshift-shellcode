@@ -1,5 +1,7 @@
-#define DEBUG 1
+//#define DEBUG 1
+#define PRINT 1
 #include "chess.c"
+#include <stdio.h>
 
 typedef void (*ft_action)(gamestate, move, int);
 
@@ -1130,10 +1132,10 @@ uint64_t perft_from(gamestate g, int depth)
   return n;
 }
 
-uint64_t perft(int depth)
-{
-  return perft_from(new_game(), depth);
-}
+/* uint64_t perft(int depth) */
+/* { */
+/*   return perft_from(new_game(), depth); */
+/* } */
 
 int perft_divide_depth;
 
@@ -1263,19 +1265,24 @@ void test_perft()
 {
   // Initial position
   {
-    /* assert_equal_u64("Perft(1)", 20, perft(1)); */
-    /* assert_equal_u64("Perft(2)", 400, perft(2)); */
-    /* assert_equal_u64("Perft(3)", 8902, perft(3)); */
-    /* assert_equal_u64("Perft(4)", 197281, perft(4)); */
-    /* assert_equal_u64("Perft(5)", 4865609, perft(5)); */
+    gamestate g = new_game();
+    printf("perft(1): %d\n", perft(g,1));
+    printf("perft(2): %d\n", perft(g,2));
+    printf("perft(3): %d\n", perft(g,3));
+    printf("perft(4): %d\n", perft(g,4));
+    printf("perft(5): %d\n", perft(g,5));
+    /* assert_equal_u64("Perft(2)", 400, perft(g,2)); */
+    /* assert_equal_u64("Perft(3)", 8902, perft(g,3)); */
+    /* assert_equal_u64("Perft(4)", 197281, perft(g,4)); */
+    /* assert_equal_u64("Perft(5)", 4865609, perft(g,5)); */
   }
   // Initial position(read from string)
   {
     gamestate g = parse_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-    assert_equal_u64("Perft(1)", 20,      perft_from(g,1));
-    assert_equal_u64("Perft(2)", 400,     perft_from(g,2));
-    assert_equal_u64("Perft(3)", 8902,    perft_from(g,3));
-    assert_equal_u64("Perft(4)", 197281,  perft_from(g,4));
+    /* assert_equal_u64("Perft(1)", 20,      perft_from(g,1)); */
+    /* assert_equal_u64("Perft(2)", 400,     perft_from(g,2)); */
+    /* assert_equal_u64("Perft(3)", 8902,    perft_from(g,3)); */
+    /* assert_equal_u64("Perft(4)", 197281,  perft_from(g,4)); */
     /* assert_equal_u64("Perft(5)", 4865609, perft_from(g,5)); */
     /* assert_equal_u64("Perft(6)", 119060324, perft_from(g,6)); */
     /* assert_equal_u64("Perft(7)", 3195901860, perft_from(g,7)); */
@@ -1343,62 +1350,70 @@ void test_search()
   }
 }
 
-int main() {
-  /* test_ray(); */
-  /* test_rook(); */
-  /* test_pawn(); */
-  /* test_knight(); */
-  /* test_king(); */
-  /* test_bishop(); */
-  /* test_iterator(); */
-  /* test_apply_move(); */
-  /* test_check(); */
-  /* test_castling(); */
-  /* test_promotions(); */
-  /* test_perft(); */
-  test_search();
-  /* gamestate g = new_game(); */
-  /* iterator i = mkIterator(g); */
-  
-  /* print_bitboard(i.current_piece_bb); */
-
-  /* gamestate g = new_game(); */
-  /* // 1: c2c4 */
-  /* move m1; m1.from = mkPosition(2,1); m1.to = mkPosition(2,3); */
-  /* g = swap_board(apply_move(g, m1)); */
-  /* // 2: d2d4 */
-  /* move m2; m2.from = mkPosition(3,1); m2.to = mkPosition(3,3); */
-  /* g = swap_board(apply_move(g, m2)); */
-  /* // 3: c4d5 */
-  /* move m3; m3.from = mkPosition(2,3); m3.to = mkPosition(3,4); */
-  /* g = swap_board(apply_move(g, m3)); */
-  /* // 4: c1a3 */
-  /* move m4; m4.from = mkPosition(2,0); m4.to = mkPosition(0,2); */
-  /* g = swap_board(apply_move(g, m4)); */
-  /* // 5: a2a3 */
-  /* move m5; m5.from = mkPosition(0,1); m5.to = mkPosition(0,2); */
-  /* g = swap_board(apply_move(g, m4)); */
-
-  // NOTE: D1C1 as m6 is in roce, but not the redshift shellcode.
-  
-  /* g = swap_board(apply_move(g, m2)); */
-  /* move m3; m3.from = mkPosition(0,3); m3.to = mkPosition(0,4); */
-  /* g = swap_board(apply_move(g, m3)); */
-  /* g = apply_move(g, m3); */
-  /* perft_divide(g,3); */
-  /* print_fen(g); */
-  /* // 1: B1A3 */
-
-  /* g = swap_board(apply_move(g, m1)); */
-  /* /\* // 2: B1A3 *\/ */
-  /* g = swap_board(apply_move(g, m1)); */
-  /* print_fen(g); */
-  /* /\* print_gamestate(g); *\/ */
-  // perft_divide(g, 1);
-  /* print_gamestate(g); */
-  /* printf("== rooks\n"); print_bitboard(g.rooks_bb); */
-  /* printf("== pawns\n"); print_bitboard(g.pawns_bb); */
-
-  /* print_moves(g); */
- 
+int main()
+{
+  gamestate g = new_game();
+  uint64_t result = perft(g, 2);
+  printf("%lu", result);
+  return 0;
 }
+
+/* int main() { */
+/*   /\* test_ray(); *\/ */
+/*   /\* test_rook(); *\/ */
+/*   /\* test_pawn(); *\/ */
+/*   /\* test_knight(); *\/ */
+/*   /\* test_king(); *\/ */
+/*   /\* test_bishop(); *\/ */
+/*   /\* test_iterator(); *\/ */
+/*   /\* test_apply_move(); *\/ */
+/*   /\* test_check(); *\/ */
+/*   /\* test_castling(); *\/ */
+/*   /\* test_promotions(); *\/ */
+/*   test_perft(); */
+/*   // test_search(); */
+/*   /\* gamestate g = new_game(); *\/ */
+/*   /\* iterator i = mkIterator(g); *\/ */
+  
+/*   /\* print_bitboard(i.current_piece_bb); *\/ */
+
+/*   /\* gamestate g = new_game(); *\/ */
+/*   /\* // 1: c2c4 *\/ */
+/*   /\* move m1; m1.from = mkPosition(2,1); m1.to = mkPosition(2,3); *\/ */
+/*   /\* g = swap_board(apply_move(g, m1)); *\/ */
+/*   /\* // 2: d2d4 *\/ */
+/*   /\* move m2; m2.from = mkPosition(3,1); m2.to = mkPosition(3,3); *\/ */
+/*   /\* g = swap_board(apply_move(g, m2)); *\/ */
+/*   /\* // 3: c4d5 *\/ */
+/*   /\* move m3; m3.from = mkPosition(2,3); m3.to = mkPosition(3,4); *\/ */
+/*   /\* g = swap_board(apply_move(g, m3)); *\/ */
+/*   /\* // 4: c1a3 *\/ */
+/*   /\* move m4; m4.from = mkPosition(2,0); m4.to = mkPosition(0,2); *\/ */
+/*   /\* g = swap_board(apply_move(g, m4)); *\/ */
+/*   /\* // 5: a2a3 *\/ */
+/*   /\* move m5; m5.from = mkPosition(0,1); m5.to = mkPosition(0,2); *\/ */
+/*   /\* g = swap_board(apply_move(g, m4)); *\/ */
+
+/*   // NOTE: D1C1 as m6 is in roce, but not the redshift shellcode. */
+  
+/*   /\* g = swap_board(apply_move(g, m2)); *\/ */
+/*   /\* move m3; m3.from = mkPosition(0,3); m3.to = mkPosition(0,4); *\/ */
+/*   /\* g = swap_board(apply_move(g, m3)); *\/ */
+/*   /\* g = apply_move(g, m3); *\/ */
+/*   /\* perft_divide(g,3); *\/ */
+/*   /\* print_fen(g); *\/ */
+/*   /\* // 1: B1A3 *\/ */
+
+/*   /\* g = swap_board(apply_move(g, m1)); *\/ */
+/*   /\* /\\* // 2: B1A3 *\\/ *\/ */
+/*   /\* g = swap_board(apply_move(g, m1)); *\/ */
+/*   /\* print_fen(g); *\/ */
+/*   /\* /\\* print_gamestate(g); *\\/ *\/ */
+/*   // perft_divide(g, 1); */
+/*   /\* print_gamestate(g); *\/ */
+/*   /\* printf("== rooks\n"); print_bitboard(g.rooks_bb); *\/ */
+/*   /\* printf("== pawns\n"); print_bitboard(g.pawns_bb); *\/ */
+
+/*   /\* print_moves(g); *\/ */
+ 
+/* } */

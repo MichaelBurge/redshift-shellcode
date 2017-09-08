@@ -1,8 +1,10 @@
-int x(int l);
+// gcc -c -O simple-2.c
+
+int main(int l);
 static int y(int x);
 static int factorial(int x);
 
-int x(int l) {
+int main(int l) {
   int ret = 0;
   for (int i = 0; i < l; i++) {
     ret += factorial(i);
