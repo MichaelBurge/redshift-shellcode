@@ -1,4 +1,4 @@
-from ctypes import (CDLL, c_long, c_char_p, c_void_p, memmove, cast, CFUNCTYPE, c_uint64, Structure, c_int)
+from ctypes import (CDLL, c_long, c_char_p, c_void_p, memmove, cast, CFUNCTYPE, c_uint64, Structure, c_int, c_char, create_string_buffer)
 
 from shellcode_bytes import shellcode, offset
 #shellcode = b'\xb8\x2a\x00\x00\x00\xc3'
@@ -30,21 +30,15 @@ def execute():
         raise Exception("mprotect: " + str(code))
 
     main_ptr = c_void_p(c_uint64(code_ptr.value).value + c_uint64(offset).value)
-    # New game values
-    g = GAMESTATE(
-        rooks   = 9295429630892703873,
-        knights = 4755801206503243842,
-        bishops = 2594073385365405732,
-        queens  = 576460752303423496,
-        kings   = 1152921504606846992,
-        pawns   = 71776119061282560,
-        current_player  = 65535,
-        en_passant_sq = 255,
-        castle_flags = 15)
-    SHELLCODE_T = CFUNCTYPE(c_uint64, GAMESTATE)
+    fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1"
+    depth = 3
+    fen_buf = c_char_p(fen)
+    move_buf = create_string_buffer(100)
+    SHELLCODE_T = CFUNCTYPE(None, c_char_p, c_char_p, c_int)
+    
     fptr = cast(main_ptr, SHELLCODE_T)
-    result = fptr(g)
+    fptr(fen, move_buf, depth)
     libc.free(code_ptr)
-    return result
+    return move_buf.raw
 
 print execute()

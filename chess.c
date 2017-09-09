@@ -48,10 +48,11 @@ const int VALUE_KNIGHT = 300;
 const int VALUE_BISHOP = 300;
 const int VALUE_ROOK   = 500;
 const int VALUE_QUEEN  = 900;
-const int VALUE_AVAILABLE_MOVE = 5;
+const int VALUE_AVAILABLE_MOVE = 5; // Points for each move available
 const int VALUE_CHECKMATE = -1000000; 
 const int VALUE_NEGAMAX_START = 0x8F000000;
-const int VALUE_CENTER = 10;
+const int VALUE_CENTER = 10; // Points for holding the center
+const int VALUE_ATTACK = 20; // Points for being able to attack enemy pieces.
 
 const int DIRECTION_EAST  = 0;
 const int DIRECTION_WEST  = 1;
@@ -1107,6 +1108,11 @@ private int score_availability(gamestate g)
   return VALUE_AVAILABLE_MOVE * num_moves;
 }
 
+private int score_attacking(gamestate g)
+{
+  return num_bits(enemy_pieces(g) & movepoints(g));
+}
+
 private uint64_t center()
 {
   return
@@ -1139,7 +1145,7 @@ private int score_center(gamestate g)
 
 private int evaluate(gamestate g)
 {
-  return score_pieces(g) + score_availability(g);
+  return score_pieces(g) + score_availability(g) + score_attacking(g);
 }
 
 
@@ -1256,7 +1262,7 @@ private gamestate parse_fen(const char* s)
   return g;
 }
 
-char piece_char(int p, bool is_white) {
+private char piece_char(int p, bool is_white) {
   switch (p) {
   case PIECE_EMPTY: return '.';
   case PIECE_ROOK: return is_white ? 'R' : 'r';
@@ -1269,7 +1275,7 @@ char piece_char(int p, bool is_white) {
   }
 }
 
-void print_pos(int pos, char *buffer)
+private void print_pos(int pos, char *buffer)
 {
   *buffer++ = file(pos) + 'a';
   *buffer++ = rank(pos) + '1';
@@ -1277,29 +1283,31 @@ void print_pos(int pos, char *buffer)
 
 private void print_fen(gamestate g, char *buffer)
 {
-  int empty_squares = 0;
+  int num_empty_squares = 0;
   for (int r = 8; r --> 0;) {
     for (int f = 0; f < 8; f++) {
       int pos = mkPosition(f, r);
       int piece = get_piece(g, pos);
       if (piece == PIECE_EMPTY) {
-        empty_squares++;
+        num_empty_squares++;
         continue;
-      } else if (empty_squares > 0) {
-        *buffer++ = (empty_squares + '0');
-        empty_squares = 0;
+      } else if (num_empty_squares > 0) {
+        *buffer++ = (num_empty_squares + '0');
+        num_empty_squares = 0;
       }
       bool is_white = is_bit_set(g.current_player_bb, pos);
       char c = piece_char(piece, is_white);
       *buffer++ = c;
     }
-    if (empty_squares > 0) {
-      *buffer++ = (empty_squares + '0');
-      empty_squares = 0;
+    if (num_empty_squares > 0) {
+      *buffer++ = (num_empty_squares + '0');
+      num_empty_squares = 0;
     }
-    if (r > 0)
+    if (r > 0) {
       *buffer++ = '/';
+    }
   }
+ skip_loop:
   *buffer++ = ' ';
   *buffer++ = 'w';
   *buffer++ = ' ';
@@ -1332,7 +1340,7 @@ private void print_fen(gamestate g, char *buffer)
 }
 
 // Buffer must have at least 7 characters available
-void print_move(move m, char *buffer)
+private void print_move(move m, char *buffer)
 {
   print_pos(m.from, buffer); buffer+=2;
   print_pos(m.to & 0x3F, buffer); buffer+=2;
@@ -1348,14 +1356,14 @@ void print_move(move m, char *buffer)
   *buffer++ = 0;
 }
 
-int parse_pos(const char* buffer)
+private int parse_pos(const char* buffer)
 {
   int file = *buffer++ - 'a';
   int rank = *buffer++ - '1';
   return mkPosition(file, rank);
 }
 
-move parse_move(const char* buffer)
+private move parse_move(const char* buffer)
 {
   move m;
   m.from = parse_pos(buffer);
@@ -1375,9 +1383,9 @@ move parse_move(const char* buffer)
   return m;
 }
 
-extern "C" uint64_t custom_main(gamestate g, char* buffer)
+extern "C" void custom_main(const char *g_str, char *m_dest, int depth)
 {
-  move m = best_move(g,3);
-  packed_move m2; m2.m = m;
-  return m2.packed;
+  gamestate g = parse_fen(g_str);
+  move m = best_move(g,depth);
+  print_move(m, m_dest);
 }

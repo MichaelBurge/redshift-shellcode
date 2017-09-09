@@ -42,8 +42,8 @@ typedef struct gamestate {
   };
 } gamestate;
 
-typedef uint64_t (*shellcode_t)(gamestate);
-uint64_t invoke(shellcode_t f, gamestate g) { return f(g); }
+typedef void (*shellcode_t)(const char*, char*);
+void invoke(shellcode_t f, const char* g, char* m) { f(g, m); }
 
 extern "C" uint64_t custom_main(gamestate);
 
@@ -60,20 +60,10 @@ int main() {
   }
   shellcode_t f = (shellcode_t)(code_ptr+offset);
   /* print_hex(f, code_ptr + size); */
-  gamestate g;
-  g.rooks   = 9295429630892703873LU;
-  g.knights = 4755801206503243842LU;
-  g.bishops = 2594073385365405732LU;
-  g.queens  = 576460752303423496LU;
-  g.kings   = 1152921504606846992LU;
-  g.pawns   = 71776119061282560LU;
-  g.player  = 65535;
-  g.en_passant_sq = 255;
-  g.castle_flags = 15;
-  //uint64_t result = custom_main(g);
-  //printf("%lu\n", result);
-  uint64_t result = invoke(f, g);
-  printf("%lu\n", result);
+  const char* fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
+  char move_buf[10];
+  invoke(f, fen, move_buf);
+  printf("%s\n", move_buf);
   free(code_ptr);
 
   
