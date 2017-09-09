@@ -31,14 +31,14 @@ def execute():
 
     main_ptr = c_void_p(c_uint64(code_ptr.value).value + c_uint64(offset).value)
     fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1"
-    depth = 3
-    fen_buf = c_char_p(fen)
-    move_buf = create_string_buffer(100)
+    #move = "a1b1"
+    result_buf = create_string_buffer(300)
     SHELLCODE_T = CFUNCTYPE(None, c_char_p, c_char_p, c_int)
     
     fptr = cast(main_ptr, SHELLCODE_T)
-    fptr(fen, move_buf, depth)
+    fptr(fen, result_buf, 2)
+    #fptr(fen, move, result_buf)
     libc.free(code_ptr)
-    return move_buf.raw
+    return result_buf.raw
 
 print execute()

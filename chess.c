@@ -1177,7 +1177,7 @@ private move best_move(gamestate g, int depth)
   for (iterator i = mkLegalIterator(g); ! is_iterator_finished(i); i = advance_iterator_legal(g, i)) {
     move m = dereference_iterator(i);
     gamestate g2 = apply_move(g, m);
-    int score = negamax(g, depth, 1);
+    int score = negamax(g2, depth, 1);
     if (score > max) {
       max = score;
       ret = m;
@@ -1383,9 +1383,19 @@ private move parse_move(const char* buffer)
   return m;
 }
 
+// Used when generating pf_best_move
 extern "C" void custom_main(const char *g_str, char *m_dest, int depth)
 {
   gamestate g = parse_fen(g_str);
-  move m = best_move(g,depth);
+  move m = best_move(g, depth);
   print_move(m, m_dest);
 }
+
+// Used when generating pf_apply_move
+/* extern "C" void custom_main(const char *g_str, const char *m_str, char *g_dest) */
+/* { */
+/*   gamestate g = parse_fen(g_str); */
+/*   move m = parse_move(m_str); */
+/*   gamestate g2 = apply_move(g, m); */
+/*   print_fen(g2, g_dest); */
+/* } */
