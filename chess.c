@@ -149,9 +149,6 @@ const uint64_t RAY_A1H8 =
 
 #ifdef PRINT
 #include <stdio.h>
-void print_pos(int pos) {
-  printf("%c%d", file(pos) + 'a', rank(pos)+1);
-}
 private void print_bitboard(uint64_t bb)
 {
   for (int r = 8; r --> 0;) {
@@ -1070,7 +1067,7 @@ private uint64_t piece_legal_movepoints(gamestate g, int idx)
   return ret;
 }
 
-private move mkPromotion(gamestate g, int from, int piece)
+private move mkPromotion(int from, int piece)
 {
   if (rank(from) != 6)
     abort();
@@ -1202,7 +1199,183 @@ typedef struct packed_move {
   };
 } packed_move;
 
-extern "C" uint64_t custom_main(gamestate g)
+
+private gamestate parse_fen(const char* s)
+{
+  const char *orig_s = s;
+  // Pieces
+  gamestate g = zerostate();
+  for (int r = 8; r --> 0;) {
+    for (int f = 0;; f++) {
+      int pos = mkPosition(f,r);
+      char c = *s++;
+      switch (c) {
+      case 'R': g.current_piece_bb |= bit(pos);
+      case 'r': g.rooks_bb |= bit(pos); break;
+      case 'N': g.current_piece_bb |= bit(pos);
+      case 'n': g.knights_bb |= bit(pos); break;
+      case 'B': g.current_piece_bb |= bit(pos);
+      case 'b': g.bishops_bb |= bit(pos); break;
+      case 'Q': g.current_piece_bb |= bit(pos);
+      case 'q': g.queens_bb |= bit(pos); break;
+      case 'K': g.current_piece_bb |= bit(pos);
+      case 'k': g.kings_bb |= bit(pos); break;
+      case 'P': g.current_piece_bb |= bit(pos);
+      case 'p': g.pawns_bb |= bit(pos); break;
+      case '8': f++;
+      case '7': f++;
+      case '6': f++;
+      case '5': f++;
+      case '4': f++;
+      case '3': f++;
+      case '2': f++;
+      case '1': break;
+      case '/': goto end_row;
+      case ' ': goto end_loop;
+      default: abort(); goto end_loop;
+      }
+    }
+  end_row:;
+  }
+ end_loop:
+  // Color
+  // TODO: Implement this
+  s++;
+  s++;
+  // Castle flags
+  while (*s != ' ') {
+    switch (*s++) {
+    case 'K': g.castle_flags |= CASTLE_WHITE_KINGSIDE; break;
+    case 'Q': g.castle_flags |= CASTLE_WHITE_QUEENSIDE; break;
+    case 'k': g.castle_flags |= CASTLE_BLACK_KINGSIDE; break;
+    case 'q': g.castle_flags |= CASTLE_BLACK_QUEENSIDE; break;
+    case '-': break;
+    default: abort();
+    }
+  }
+  return g;
+}
+
+char piece_char(int p, bool is_white) {
+  switch (p) {
+  case PIECE_EMPTY: return '.';
+  case PIECE_ROOK: return is_white ? 'R' : 'r';
+  case PIECE_KNIGHT: return is_white ? 'N' : 'n';
+  case PIECE_BISHOP: return is_white ? 'B' : 'b';
+  case PIECE_QUEEN: return is_white ? 'Q' : 'q';
+  case PIECE_KING: return is_white ? 'K' : 'k';
+  case PIECE_PAWN: return is_white ? 'P' : 'p';
+  default: abort();
+  }
+}
+
+void print_pos(int pos, char *buffer)
+{
+  *buffer++ = file(pos) + 'a';
+  *buffer++ = rank(pos) + '1';
+}
+
+private void print_fen(gamestate g, char *buffer)
+{
+  int empty_squares = 0;
+  for (int r = 8; r --> 0;) {
+    for (int f = 0; f < 8; f++) {
+      int pos = mkPosition(f, r);
+      int piece = get_piece(g, pos);
+      if (piece == PIECE_EMPTY) {
+        empty_squares++;
+        continue;
+      } else if (empty_squares > 0) {
+        *buffer++ = (empty_squares + '0');
+        empty_squares = 0;
+      }
+      bool is_white = is_bit_set(g.current_player_bb, pos);
+      char c = piece_char(piece, is_white);
+      *buffer++ = c;
+    }
+    if (empty_squares > 0) {
+      *buffer++ = (empty_squares + '0');
+      empty_squares = 0;
+    }
+    if (r > 0)
+      *buffer++ = '/';
+  }
+  *buffer++ = ' ';
+  *buffer++ = 'w';
+  *buffer++ = ' ';
+  // Castle Flags
+  {
+    if (g.castle_flags & CASTLE_WHITE_KINGSIDE)
+      *buffer++ = 'K';
+    if (g.castle_flags & CASTLE_WHITE_QUEENSIDE)
+      *buffer++ = 'Q';
+    if (g.castle_flags & CASTLE_BLACK_KINGSIDE)
+      *buffer++ = 'k';
+    if (g.castle_flags & CASTLE_BLACK_QUEENSIDE)
+      *buffer++ = 'q';
+    if (! g.castle_flags)
+      *buffer++ = '-';
+  }
+  *buffer++ = ' ';
+  if (g.en_passant_sq == POSITION_INVALID) {
+    *buffer++ = '-';
+  } else {
+    //printf("%d---", g.en_passant_sq);
+    print_pos(g.en_passant_sq, buffer);
+    buffer += 2;
+  }
+  *buffer++ = ' ';
+  *buffer++ = '0';
+  *buffer++ = ' ';
+  *buffer++ = '1';
+  *buffer++ = 0;
+}
+
+// Buffer must have at least 7 characters available
+void print_move(move m, char *buffer)
+{
+  print_pos(m.from, buffer); buffer+=2;
+  print_pos(m.to & 0x3F, buffer); buffer+=2;
+  int piece = promotion_piece(m);
+  switch (piece) {
+  case PIECE_EMPTY: break;
+  case PIECE_ROOK: *buffer++ = '/'; *buffer++ = 'R'; break;
+  case PIECE_KNIGHT: *buffer++ = '/'; *buffer++ = 'N'; break;
+  case PIECE_BISHOP: *buffer++ = '/'; *buffer++ = 'B'; break;
+  case PIECE_QUEEN: *buffer++ = '/'; *buffer++ = 'Q'; break;
+  default: abort();
+  }
+  *buffer++ = 0;
+}
+
+int parse_pos(const char* buffer)
+{
+  int file = *buffer++ - 'a';
+  int rank = *buffer++ - '1';
+  return mkPosition(file, rank);
+}
+
+move parse_move(const char* buffer)
+{
+  move m;
+  m.from = parse_pos(buffer);
+  buffer += 2;
+  m.to = parse_pos(buffer);
+  buffer += 2;
+  if (*buffer) {
+    buffer++;
+    switch (*buffer++) {
+    case 'R': m.to |= (PIECE_ROOK << 6); break;
+    case 'N': m.to |= (PIECE_KNIGHT << 6); break;
+    case 'B': m.to |= (PIECE_BISHOP << 6); break;
+    case 'Q': m.to |= (PIECE_QUEEN << 6); break;
+    default: abort();
+    }
+  }
+  return m;
+}
+
+extern "C" uint64_t custom_main(gamestate g, char* buffer)
 {
   move m = best_move(g,3);
   packed_move m2; m2.m = m;
