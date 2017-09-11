@@ -3,6 +3,8 @@ from ctypes import (CDLL, c_long, c_char_p, c_void_p, memmove, cast, CFUNCTYPE, 
 from shellcode_bytes import shellcode, offset
 #shellcode = b'\xb8\x2a\x00\x00\x00\xc3'
 #offset = 26
+fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1"
+move = "e1f1"
 
 def execute():
     libc = CDLL('libc.so.6')
@@ -19,16 +21,12 @@ def execute():
         raise Exception("mprotect: " + str(code))
 
     main_ptr = c_void_p(c_uint64(code_ptr.value).value + c_uint64(offset).value)
-    fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1"
-    move = "a1b1"
-    fen2 = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/1R2K2R b Kkq - 0 1"
-    move2 = "a6b5"
+    
     result_buf = create_string_buffer(300)
     SHELLCODE_T = CFUNCTYPE(None, c_char_p, c_char_p, c_char_p)
     
     fptr = cast(main_ptr, SHELLCODE_T)
     fptr(fen, move, result_buf)
-    #fptr(fen2, move2, result_buf)
     libc.free(code_ptr)
     return result_buf.raw
 

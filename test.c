@@ -70,7 +70,7 @@ void walk_game_tree(gamestate init, int depth, ft_action f)
     iterator i = mkLegalIterator(init);
     while (! is_iterator_finished(i)) {
       move m = dereference_iterator(i);
-      gamestate g = swap_board(apply_move(init, m));
+      gamestate g = apply_move(init, m);
 
       f(init, m, depth);
       walk_game_tree(g, depth-1, f);
@@ -478,7 +478,7 @@ void test_pawn()
     }
     // Double jump allows en passant
     move m; m.from = mkPosition(0,1); m.to = mkPosition(0,3);
-    g = swap_board(apply_move(g, m));
+    g = apply_move(g, m);
     i = mkIterator(g);
     {
       uint64_t expected =
@@ -488,8 +488,8 @@ void test_pawn()
       assert_equal_bb("test_pawn_en_passant_2", expected, i.current_piece_bb);
     }
     // The actual capture
-    move m2; m2.from = mkPosition(1,4); m2.to = mkPosition(0,5);
-    g = swap_board(apply_move(g, m2));
+    move m2; m2.from = mkPosition(1,3); m2.to = mkPosition(0,2);
+    g = apply_move(g, swap_move(m2));
     {
       assert_equal_int("test_pawn_en_passant_target_2", POSITION_INVALID, g.en_passant_sq);
       assert_equal_bb("test_pawn_en_passant_3", bit(mkPosition(0,2)), g.pawns_bb);
@@ -691,7 +691,7 @@ void test_apply_move()
     move m = dereference_iterator(i);
     assert_equal_int("test_apply_move_from", center, m.from);
     assert_equal_int("test_apply_move_to", mkPosition(2,1), m.to);
-    gamestate g2 = apply_move(g, m);
+    gamestate g2 = swap_board(apply_move(g, m));
 
     assert_equal_bb("test_apply_move", bit(mkPosition(2,1)), g2.knights_bb);
   }
@@ -709,7 +709,7 @@ void test_apply_move()
     move m = dereference_iterator(i);
     assert_equal_int("test_apply_move_from", center, m.from);
     assert_equal_int("test_apply_move_to", mkPosition(2,1), m.to);
-    gamestate g2 = apply_move(g, m);
+    gamestate g2 = swap_board(apply_move(g, m));
 
     uint64_t expected = bit(m.to) | bit(mkPosition(1,0)) | bit(mkPosition(6,0));
     assert_equal_bb("test_apply_move_2", expected, g2.knights_bb);
@@ -818,7 +818,7 @@ void test_castling()
     uint64_t actual = valid_king_moves(g, mkPosition(4,0));
     assert_equal_bb("test_castling_1_moves", expected, actual);
     move m; m.from = mkPosition(4,0); m.to = CASTLE_KINGSIDE_KPOS;
-    gamestate g2 = apply_move(g, m);
+    gamestate g2 = swap_board(apply_move(g, m));
     assert_equal_bb("test_castling_1_king", bit(CASTLE_KINGSIDE_KPOS), g2.kings_bb);
     assert_equal_bb("test_castling_1_rook", bit(CASTLE_KINGSIDE_RPOS), g2.rooks_bb);
     assert_equal_u64("test_castling_1_flags", 0, g2.castle_flags);
@@ -841,7 +841,7 @@ void test_castling()
     uint64_t actual = valid_king_moves(g, mkPosition(4,0));
     assert_equal_bb("test_castling_2_moves", expected, actual);
     move m; m.from = mkPosition(4,0); m.to = mkPosition(2,0);
-    gamestate g2 = apply_move(g, m);
+    gamestate g2 = swap_board(apply_move(g, m));
     assert_equal_bb("test_castling_2_king", bit(mkPosition(2,0)), g2.kings_bb);
     assert_equal_bb("test_castling_2_rook", bit(mkPosition(3,0)), g2.rooks_bb);
     assert_equal_u64("test_castling_2_flags", 0, g2.castle_flags);
@@ -1046,13 +1046,13 @@ void test_castling()
     // West Rook
     {
       move m; m.from = mkPosition(7,0); m.to = mkPosition(7,7);
-      gamestate g2 = apply_move(g, m);
+      gamestate g2 = swap_board(apply_move(g, m));
       assert_equal_u64("test_castling_13_remove_flag_on_eat_rook_1", CASTLE_BLACK_QUEENSIDE, g2.castle_flags);
     }
     // East Rook
     {
       move m; m.from = mkPosition(0,0); m.to = mkPosition(0,7);
-      gamestate g2 = apply_move(g, m);
+      gamestate g2 = swap_board(apply_move(g, m));
       assert_equal_u64("test_castling_13_remove_flag_on_eat_rook_2", CASTLE_BLACK_KINGSIDE, g2.castle_flags);
     }
   }
@@ -1066,14 +1066,14 @@ void test_promotions()
   // Promotion to Rook
   {
     move m = mkPromotion(mkPosition(0,6), PIECE_ROOK);
-    gamestate g2 = apply_move(g, m);
+    gamestate g2 = swap_board(apply_move(g, m));
     assert_equal_bb("test_promotions_1_pawns", 0, g2.pawns_bb);
     assert_equal_bb("test_promotions_1_rooks", bit(mkPosition(0,7)), g2.rooks_bb);
   }
   // Promotion to Knight
   {
     move m = mkPromotion(mkPosition(0,6), PIECE_KNIGHT);
-    gamestate g2 = apply_move(g, m);
+    gamestate g2 = swap_board(apply_move(g, m));
     assert_equal_bb("test_promotions_2_pawns", 0, g2.pawns_bb);
     assert_equal_bb("test_promotions_2_knights", bit(mkPosition(0,7)), g2.knights_bb);
 
@@ -1081,7 +1081,7 @@ void test_promotions()
   // Promotion to Bishop
   {
     move m = mkPromotion(mkPosition(0,6), PIECE_BISHOP);
-    gamestate g2 = apply_move(g, m);
+    gamestate g2 = swap_board(apply_move(g, m));
     assert_equal_bb("test_promotions_3_pawns", 0, g2.pawns_bb);
     assert_equal_bb("test_promotions_3_bishops", bit(mkPosition(0,7)), g2.bishops_bb);
 
@@ -1089,7 +1089,7 @@ void test_promotions()
   // Promotion to Queen
   {
     move m = mkPromotion(mkPosition(0,6), PIECE_QUEEN);
-    gamestate g2 = apply_move(g, m);
+    gamestate g2 = swap_board(apply_move(g, m));
     assert_equal_bb("test_promotions_4_pawns", 0, g2.pawns_bb);
     assert_equal_bb("test_promotions_4_queens", bit(mkPosition(0,7)), g2.queens_bb);
   }
@@ -1175,10 +1175,10 @@ void test_perft()
   // Initial position(read from string)
   {
     gamestate g = parse_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-    /* assert_equal_u64("Perft(1)", 20,      perft_from(g,1)); */
-    /* assert_equal_u64("Perft(2)", 400,     perft_from(g,2)); */
-    /* assert_equal_u64("Perft(3)", 8902,    perft_from(g,3)); */
-    /* assert_equal_u64("Perft(4)", 197281,  perft_from(g,4)); */
+    assert_equal_u64("Perft(1)", 20,      perft_from(g,1));
+    assert_equal_u64("Perft(2)", 400,     perft_from(g,2));
+    assert_equal_u64("Perft(3)", 8902,    perft_from(g,3));
+    assert_equal_u64("Perft(4)", 197281,  perft_from(g,4));
     /* assert_equal_u64("Perft(5)", 4865609, perft_from(g,5)); */
     /* assert_equal_u64("Perft(6)", 119060324, perft_from(g,6)); */
     /* assert_equal_u64("Perft(7)", 3195901860, perft_from(g,7)); */
@@ -1257,6 +1257,26 @@ void test_parsers()
     assert_equal_int("parse_fen_en_passant", g.en_passant_sq, g2.en_passant_sq);
     assert_equal_u64("parse_fen_castle", g.castle_flags, g2.castle_flags);
   }
+  // Gamestate (castle flags 1)
+  {
+    const char *fen = "rnb1kb1r/ppp1p2p/6p1/6pn/P1BqN3/R7/1PP2PPP/4K1NR b Kkq - 0 1";
+    gamestate g = parse_fen(fen);
+    char actual[200];
+    g = apply_move(g, swap_move(parse_move("d4e4")));
+    print_fen(g, actual);
+    const char *expected = "rnb1kb1r/ppp1p2p/6p1/6pn/P1B1q3/R7/1PP2PPP/4K1NR w Kkq - 0 1";
+    assert_equal_string("test_parser_castle_flags", expected, actual);
+  }
+  // Gamestate (castle flags 2)
+  {
+    const char *fen = "2b1kb1r/p1p2p2/5n1p/2qp2p1/3rp3/2P3P1/PPQPBP1P/RNB1K1NR w KQk - 0 1";
+    gamestate g = parse_fen(fen);
+    char actual[200];
+    g = apply_move(g, parse_move("e1f1"));
+    print_fen(g, actual);
+    const char *expected = "2b1kb1r/p1p2p2/5n1p/2qp2p1/3rp3/2P3P1/PPQPBP1P/RNB2KNR b k - 0 1";
+    assert_equal_string("test_parser_castle_flags_2", expected, actual);
+  }
 }
 
 int negamax_simple(gamestate g, int depth, int color) {
@@ -1290,85 +1310,228 @@ void test_search()
 /* int main() */
 /* { */
 /*   gamestate g = new_game(); */
-/*   uint64_t result = perft(g, 2); */
+/*   move m = parse_move("e2e4"); */
+/*   g = apply_move(g, m); */
+  
 /*   printf("%lu", result); */
 /*   return 0; */
 /* } */
 
-/* int main() { */
-/*   /\* test_ray(); *\/ */
-/*   /\* test_rook(); *\/ */
-/*   /\* test_pawn(); *\/ */
-/*   /\* test_knight(); *\/ */
-/*   /\* test_king(); *\/ */
-/*   /\* test_bishop(); *\/ */
-/*   /\* test_iterator(); *\/ */
-/*   /\* test_apply_move(); *\/ */
-/*   /\* test_check(); *\/ */
-/*   /\* test_castling(); *\/ */
-/*   /\* test_promotions(); *\/ */
-/*   test_perft(); */
-/*   // test_search(); */
-/*   /\* gamestate g = new_game(); *\/ */
-/*   /\* iterator i = mkIterator(g); *\/ */
-  
-/*   /\* print_bitboard(i.current_piece_bb); *\/ */
-
-/*   /\* gamestate g = new_game(); *\/ */
-/*   /\* // 1: c2c4 *\/ */
-/*   /\* move m1; m1.from = mkPosition(2,1); m1.to = mkPosition(2,3); *\/ */
-/*   /\* g = swap_board(apply_move(g, m1)); *\/ */
-/*   /\* // 2: d2d4 *\/ */
-/*   /\* move m2; m2.from = mkPosition(3,1); m2.to = mkPosition(3,3); *\/ */
-/*   /\* g = swap_board(apply_move(g, m2)); *\/ */
-/*   /\* // 3: c4d5 *\/ */
-/*   /\* move m3; m3.from = mkPosition(2,3); m3.to = mkPosition(3,4); *\/ */
-/*   /\* g = swap_board(apply_move(g, m3)); *\/ */
-/*   /\* // 4: c1a3 *\/ */
-/*   /\* move m4; m4.from = mkPosition(2,0); m4.to = mkPosition(0,2); *\/ */
-/*   /\* g = swap_board(apply_move(g, m4)); *\/ */
-/*   /\* // 5: a2a3 *\/ */
-/*   /\* move m5; m5.from = mkPosition(0,1); m5.to = mkPosition(0,2); *\/ */
-/*   /\* g = swap_board(apply_move(g, m4)); *\/ */
-
-/*   // NOTE: D1C1 as m6 is in roce, but not the redshift shellcode. */
-  
-/*   /\* g = swap_board(apply_move(g, m2)); *\/ */
-/*   /\* move m3; m3.from = mkPosition(0,3); m3.to = mkPosition(0,4); *\/ */
-/*   /\* g = swap_board(apply_move(g, m3)); *\/ */
-/*   /\* g = apply_move(g, m3); *\/ */
-/*   /\* perft_divide(g,3); *\/ */
-/*   /\* print_fen(g); *\/ */
-/*   /\* // 1: B1A3 *\/ */
-
-/*   /\* g = swap_board(apply_move(g, m1)); *\/ */
-/*   /\* /\\* // 2: B1A3 *\\/ *\/ */
-/*   /\* g = swap_board(apply_move(g, m1)); *\/ */
-/*   /\* print_fen(g); *\/ */
-/*   /\* /\\* print_gamestate(g); *\\/ *\/ */
-/*   // perft_divide(g, 1); */
-/*   /\* print_gamestate(g); *\/ */
-/*   /\* printf("== rooks\n"); print_bitboard(g.rooks_bb); *\/ */
-/*   /\* printf("== pawns\n"); print_bitboard(g.pawns_bb); *\/ */
-
-/*   /\* print_moves(g); *\/ */
- 
-/* } */
-int main()
+void print_move_out(move m)
 {
-  test_parsers();
-  /* packed_move m; */
-  /* m.packed = 68719476737; // b1a3 */
-  /* print_move(m.m); */
-  /* gamestate g = new_game(); */
-  /* printf("rooks: %ld\n", g.rooks_bb); */
-  /* printf("knights: %ld\n", g.knights_bb); */
-  /* printf("bishops: %ld\n", g.bishops_bb); */
-  /* printf("queens: %ld\n", g.queens_bb); */
-  /* printf("kings: %ld\n", g.kings_bb); */
-  /* printf("pawns: %ld\n", g.pawns_bb); */
-  /* printf("player: %ld\n", g.current_player_bb); */
-  /* printf("en_passant_sq: %d\n", g.en_passant_sq); */
-  /* printf("castle_flags: %ld\n", g.castle_flags); */
-  /* printf("perft: %lu\n", custom_main(g)); */
+  char c[10];
+  print_move(m, c);
+  printf("%s|", c);
 }
+
+void print_fen_out(gamestate g)
+{
+  char c[300];
+  print_fen(g, c);
+  printf("%s\n", c);
+}
+
+gamestate computer_move(gamestate g)
+{
+  move m = best_move(g,3);
+  g = apply_move(g, m);
+  print_move_out(m);
+  print_fen_out(g);
+  return g;
+}
+
+gamestate player_move(gamestate g, const char *m_str)
+{
+  move m = parse_move(m_str);
+  print_move_out(m);
+  if (! g.is_white)
+    m = swap_move(m);
+  g = apply_move(g, m);
+  print_fen_out(g);
+  return g;
+}
+
+int main() {
+
+  
+  /* test_ray(); */
+  /* test_rook(); */
+  /* test_pawn(); */
+  /* test_knight(); */
+  /* test_king(); */
+  /* test_bishop(); */
+  /* test_iterator(); */
+  /* test_apply_move(); */
+  /* test_check(); */
+  /* test_castling(); */
+  /* test_promotions(); */
+  /* test_perft(); */
+  test_parsers();
+  // test_search();
+
+  gamestate g = parse_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+  g = player_move(g, "e2e3"); // g = computer_move(g);
+  g = player_move(g, "d7d6");
+  g = player_move(g, "d1h5"); // g = computer_move(g);
+  g = player_move(g, "g8f6");
+  g = player_move(g, "h5g5"); // g = computer_move(g);
+  g = player_move(g, "h7h6"); 
+  g = player_move(g, "g5f4"); // g = computer_move(g);
+  g = player_move(g, "g7g5");
+  g = player_move(g, "f4d4"); // g = computer_move(g);
+  g = player_move(g, "e7e5");
+  g = player_move(g, "d4a4"); // g = computer_move(g);
+  g = player_move(g, "c8d7");
+  g = player_move(g, "a4c4"); // g = computer_move(g);
+  g = player_move(g, "d6d5");
+  g = player_move(g, "c4b3"); // g = computer_move(g);
+  g = player_move(g, "b8c6");
+  g = player_move(g, "g1f3"); // g = computer_move(g);
+  g = player_move(g, "e5e4");
+  g = player_move(g, "f3g1"); // g = computer_move(g);
+  g = player_move(g, "c6b4");
+  g = player_move(g, "g2g3"); // g = computer_move(g);
+  g = player_move(g, "d8e7");
+  g = player_move(g, "f1e2"); // g = computer_move(g);
+  g = player_move(g, "e7c5");
+  g = player_move(g, "c2c3"); // g = computer_move(g);
+  g = player_move(g, "b4c6");
+  g = player_move(g, "b3b7"); // g = computer_move(g);
+  g = player_move(g, "a8b8");
+  g = player_move(g, "b7a6"); // g = computer_move(g);
+  g = player_move(g, "d7c8");
+  g = player_move(g, "a6a4"); // g = computer_move(g);
+  g = player_move(g, "b8b4");
+  g = player_move(g, "a4c2"); // g = computer_move(g);
+  g = player_move(g, "c6d4");
+  g = player_move(g, "e3d4"); // g = computer_move(g);
+  g = player_move(g, "b4d4");
+  g = player_move(g, "e1f1"); // g = computer_move(g);
+  g = player_move(g, "c8g4");
+  g = player_move(g, "e2a6"); // g = computer_move(g);
+  g = player_move(g, "c5c6");
+  g = player_move(g, "f1e1"); // g = computer_move(g);
+  g = player_move(g, "d4a4");
+  g = player_move(g, "a6f1"); // g = computer_move(g);
+  g = player_move(g, "d5d4");
+  g = player_move(g, "c2b3"); // g = computer_move(g);
+  g = player_move(g, "f8b4"); 
+  g = player_move(g, "h2h4"); // g = computer_move(g);
+  g = player_move(g, "e4e3");
+  g = player_move(g, "f2f3"); // g = computer_move(g);
+  g = player_move(g, "e3d2");
+  g = player_move(g, "e1d2"); // g = computer_move(g);
+  g = player_move(g, "d4c3");
+  g = player_move(g, "d2c2"); // g = computer_move(g);
+  g = player_move(g, "g4f5");
+  g = player_move(g, "f1d3"); // g = computer_move(g);
+  g = player_move(g, "f5d3");
+  g = player_move(g, "c2d3"); // g = computer_move(g);
+  g = player_move(g, "c6d5");
+  g = player_move(g, "b3d5"); // g = computer_move(g);
+  g = player_move(g, "f6d5");
+  g = player_move(g, "h1h2"); // g = computer_move(g);
+  g = player_move(g, "e8g8");
+  g = player_move(g, "g1h3"); // g = computer_move(g);
+  g = player_move(g, "f8e8");
+  g = player_move(g, "f3f4"); // g = computer_move(g);
+  g = player_move(g, "e8e3");
+  g = player_move(g, "d3c4"); // g = computer_move(g);
+  g = player_move(g, "c3b2");
+  g = player_move(g, "c1b2"); // g = computer_move(g);
+  g = player_move(g, "b4c3");
+  g = player_move(g, "c4c5"); // g = computer_move(g);
+  g = player_move(g, "a4a5");
+  g = player_move(g, "c5c6"); // g = computer_move(g);
+  g = player_move(g, "e3e6");
+  g = player_move(g, "c6b7"); // g = computer_move(g);
+  g = player_move(g, "a5b5");
+  g = player_move(g, "b7c8"); // g = computer_move(g);
+  g = player_move(g, "b5b2");
+  g = player_move(g, "h2h1"); // g = computer_move(g);
+  g = player_move(g, "c3a5");
+  g = player_move(g, "f4f5"); // g = computer_move(g);
+  g = player_move(g, "e6d6");
+  g = player_move(g, "b1a3"); // g = computer_move(g);
+  g = player_move(g, "d5e7");
+  /* gamestate g = parse_fen("rnb1kb1r/ppp1p2p/6p1/6pn/P1BqN3/8/1PP2PPP/R3K1NR w KQkq - 0 1"); */
+  /* g = apply_move(g, parse_move("a1a3")); */
+  /* char fen[300]; */
+  /* print_fen(g, fen); */
+  /* printf("%s\n", fen); */
+  /* gamestate g = new_game(); */
+  /* char fen[300]; */
+  /* g = apply_move(g, parse_move("e2e4")); */
+  /* move m = best_move(g, 3); */
+
+  /* print_fen(g, fen); */
+  /* printf("%s\n", fen); */
+  
+  /* g = apply_move(g, swap_move(parse_move("d7d5"))); */
+  /* print_fen(g, fen); */
+  /* printf("%s\n", fen); */
+  
+  
+  /* gamestate g = new_game(); */
+  /* iterator i = mkIterator(g); */
+  
+  /* print_bitboard(i.current_piece_bb); */
+
+  /* gamestate g = new_game(); */
+  /* // 1: c2c4 */
+  /* move m1; m1.from = mkPosition(2,1); m1.to = mkPosition(2,3); */
+  /* g = swap_board(apply_move(g, m1)); */
+  /* // 2: d2d4 */
+  /* move m2; m2.from = mkPosition(3,1); m2.to = mkPosition(3,3); */
+  /* g = swap_board(apply_move(g, m2)); */
+  /* // 3: c4d5 */
+  /* move m3; m3.from = mkPosition(2,3); m3.to = mkPosition(3,4); */
+  /* g = swap_board(apply_move(g, m3)); */
+  /* // 4: c1a3 */
+  /* move m4; m4.from = mkPosition(2,0); m4.to = mkPosition(0,2); */
+  /* g = swap_board(apply_move(g, m4)); */
+  /* // 5: a2a3 */
+  /* move m5; m5.from = mkPosition(0,1); m5.to = mkPosition(0,2); */
+  /* g = swap_board(apply_move(g, m4)); */
+
+  // NOTE: D1C1 as m6 is in roce, but not the redshift shellcode.
+  
+  /* g = swap_board(apply_move(g, m2)); */
+  /* move m3; m3.from = mkPosition(0,3); m3.to = mkPosition(0,4); */
+  /* g = swap_board(apply_move(g, m3)); */
+  /* g = apply_move(g, m3); */
+  /* perft_divide(g,3); */
+  /* print_fen(g); */
+  /* // 1: B1A3 */
+
+  /* g = swap_board(apply_move(g, m1)); */
+  /* /\* // 2: B1A3 *\/ */
+  /* g = swap_board(apply_move(g, m1)); */
+  /* print_fen(g); */
+  /* /\* print_gamestate(g); *\/ */
+  // perft_divide(g, 1);
+  /* print_gamestate(g); */
+  /* printf("== rooks\n"); print_bitboard(g.rooks_bb); */
+  /* printf("== pawns\n"); print_bitboard(g.pawns_bb); */
+
+  /* print_moves(g); */
+ 
+}
+/* int main() */
+/* { */
+/*   test_parsers(); */
+/*   /\* packed_move m; *\/ */
+/*   /\* m.packed = 68719476737; // b1a3 *\/ */
+/*   /\* print_move(m.m); *\/ */
+/*   /\* gamestate g = new_game(); *\/ */
+/*   /\* printf("rooks: %ld\n", g.rooks_bb); *\/ */
+/*   /\* printf("knights: %ld\n", g.knights_bb); *\/ */
+/*   /\* printf("bishops: %ld\n", g.bishops_bb); *\/ */
+/*   /\* printf("queens: %ld\n", g.queens_bb); *\/ */
+/*   /\* printf("kings: %ld\n", g.kings_bb); *\/ */
+/*   /\* printf("pawns: %ld\n", g.pawns_bb); *\/ */
+/*   /\* printf("player: %ld\n", g.current_player_bb); *\/ */
+/*   /\* printf("en_passant_sq: %d\n", g.en_passant_sq); *\/ */
+/*   /\* printf("castle_flags: %ld\n", g.castle_flags); *\/ */
+/*   /\* printf("perft: %lu\n", custom_main(g)); *\/ */
+/* } */

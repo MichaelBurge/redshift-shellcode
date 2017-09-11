@@ -26,6 +26,7 @@ typedef struct gamestate {
     uint64_t castle_flags;
     uint64_t promotion_piece; // For iterators
   };
+  bool is_white;
 } gamestate;
 
 struct move {
@@ -34,14 +35,16 @@ struct move {
 };
 
 typedef gamestate iterator;
+typedef int piece;
+typedef int position;
 
-const int PIECE_EMPTY  = 0;
-const int PIECE_ROOK   = 1;
-const int PIECE_KNIGHT = 2;
-const int PIECE_BISHOP = 3;
-const int PIECE_QUEEN  = 4;
-const int PIECE_KING   = 5;
-const int PIECE_PAWN   = 6;
+const piece PIECE_EMPTY  = 0;
+const piece PIECE_ROOK   = 1;
+const piece PIECE_KNIGHT = 2;
+const piece PIECE_BISHOP = 3;
+const piece PIECE_QUEEN  = 4;
+const piece PIECE_KING   = 5;
+const piece PIECE_PAWN   = 6;
 
 const int VALUE_PAWN   = 100;
 const int VALUE_KNIGHT = 300;
@@ -50,7 +53,7 @@ const int VALUE_ROOK   = 500;
 const int VALUE_QUEEN  = 900;
 const int VALUE_AVAILABLE_MOVE = 5; // Points for each move available
 const int VALUE_CHECKMATE = -1000000; 
-const int VALUE_NEGAMAX_START = 0x8F000000;
+const int VALUE_NEGAMAX_START = 0x80000000;
 const int VALUE_CENTER = 10; // Points for holding the center
 const int VALUE_ATTACK = 20; // Points for being able to attack enemy pieces.
 
@@ -128,6 +131,7 @@ private gamestate zerostate()
   x.pawns_bb = 0;
   x.en_passant_sq = POSITION_INVALID;
   x.castle_flags = 0;
+  x.is_white = true;
   return x;
 }
 
@@ -772,6 +776,7 @@ private gamestate new_game()
   x.current_player_bb = 0xFFFF;
   x.en_passant_sq = POSITION_INVALID;
   x.castle_flags = 0xF;
+  x.is_white = true;
   return x;
 }
 
@@ -803,6 +808,13 @@ private gamestate swap_board(gamestate g)
     g.castle_flags = flags;
   }
   return g;
+}
+
+private move swap_move(move m)
+{
+  m.from = mkPosition(file(m.from), 7 - rank(m.from));
+  m.to = mkPosition(file(m.to), 7 - rank(m.to));
+  return m;
 }
 
 private bool is_kingside_castle(gamestate g, move m)
@@ -900,6 +912,10 @@ private gamestate apply_move(gamestate g, move m)
   }
   // Set colors
   g.current_player_bb = clear_bit(g.current_player_bb, m.from) | bit(m.to);
+
+  g.is_white = ! g.is_white;
+
+  g = swap_board(g);
   
   return g;
 }
@@ -965,7 +981,7 @@ private bool is_in_check(gamestate g)
 
 private bool results_in_check(gamestate g, move m)
 {
-  gamestate g2 = apply_move(g,m);
+  gamestate g2 = swap_board(apply_move(g,m));
   return is_in_check(g2);
 }
 
@@ -1093,11 +1109,11 @@ private int num_bits(uint64_t x) { return popcount64(x); }
 private int score_pieces(gamestate g)
 {
   return
-    num_bits(g.pawns_bb & g.current_player_bb) * VALUE_PAWN +
+    num_bits(g.pawns_bb   & g.current_player_bb) * VALUE_PAWN +
     num_bits(g.knights_bb & g.current_player_bb) * VALUE_KNIGHT +
     num_bits(g.bishops_bb & g.current_player_bb) * VALUE_BISHOP +
-    num_bits(g.rooks_bb & g.current_player_bb) * VALUE_ROOK +
-    num_bits(g.queens_bb & g.current_player_bb) * VALUE_QUEEN;
+    num_bits(g.rooks_bb   & g.current_player_bb) * VALUE_ROOK +
+    num_bits(g.queens_bb  & g.current_player_bb) * VALUE_QUEEN;
 }
 
 private int score_availability(gamestate g)
@@ -1177,7 +1193,7 @@ private move best_move(gamestate g, int depth)
   for (iterator i = mkLegalIterator(g); ! is_iterator_finished(i); i = advance_iterator_legal(g, i)) {
     move m = dereference_iterator(i);
     gamestate g2 = apply_move(g, m);
-    int score = negamax(g2, depth, 1);
+    int score = -negamax(g2, depth, -1);
     if (score > max) {
       max = score;
       ret = m;
@@ -1192,7 +1208,7 @@ private uint64_t perft(gamestate g, int depth)
   uint64_t n = 0;
   for (iterator i = mkLegalIterator(g); ! is_iterator_finished(i); i = advance_iterator_legal(g, i)) {
     move m = dereference_iterator(i);
-    gamestate g2 = swap_board(apply_move(g, m));
+    gamestate g2 = apply_move(g, m);
     n += perft(g2, depth-1);
   }
   return n;
@@ -1245,8 +1261,11 @@ private gamestate parse_fen(const char* s)
   }
  end_loop:
   // Color
-  // TODO: Implement this
-  s++;
+  switch (*s++) {
+  case 'w': g.is_white = true; break;
+  case 'b': g.is_white = false; break;
+  default: abort();
+  }
   s++;
   // Castle flags
   while (*s != ' ') {
@@ -1258,6 +1277,9 @@ private gamestate parse_fen(const char* s)
     case '-': break;
     default: abort();
     }
+  }
+  if (!g.is_white) {
+    g = swap_board(g);
   }
   return g;
 }
@@ -1283,6 +1305,9 @@ private void print_pos(int pos, char *buffer)
 
 private void print_fen(gamestate g, char *buffer)
 {
+  bool swap = ! g.is_white;
+  if (swap)
+    g = swap_board(g);
   int num_empty_squares = 0;
   for (int r = 8; r --> 0;) {
     for (int f = 0; f < 8; f++) {
@@ -1309,7 +1334,9 @@ private void print_fen(gamestate g, char *buffer)
   }
  skip_loop:
   *buffer++ = ' ';
-  *buffer++ = 'w';
+  *buffer++ = g.is_white
+    ? 'w'
+    : 'b';
   *buffer++ = ' ';
   // Castle Flags
   {
@@ -1384,18 +1411,22 @@ private move parse_move(const char* buffer)
 }
 
 // Used when generating pf_best_move
-extern "C" void custom_main(const char *g_str, char *m_dest, int depth)
-{
-  gamestate g = parse_fen(g_str);
-  move m = best_move(g, depth);
-  print_move(m, m_dest);
-}
-
-// Used when generating pf_apply_move
-/* extern "C" void custom_main(const char *g_str, const char *m_str, char *g_dest) */
+/* extern "C" void custom_main(const char *g_str, char *m_dest, int depth) */
 /* { */
 /*   gamestate g = parse_fen(g_str); */
-/*   move m = parse_move(m_str); */
-/*   gamestate g2 = apply_move(g, m); */
-/*   print_fen(g2, g_dest); */
+/*   move m = best_move(g, depth); */
+/*   if (! g.is_white) */
+/*     m = swap_move(m); */
+/*   print_move(m, m_dest); */
 /* } */
+
+// Used when generating pf_apply_move
+extern "C" void custom_main(const char *g_str, const char *m_str, char *g_dest)
+{
+  gamestate g = parse_fen(g_str);
+  move m = parse_move(m_str);
+  if (! g.is_white)
+    m = swap_move(m);
+  gamestate g2 = apply_move(g, m);
+  print_fen(g2, g_dest);
+}
